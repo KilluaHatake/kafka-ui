@@ -147,22 +147,42 @@ const New: React.FC = () => {
         const rawJson = getValues().config;
         if (rawJson) {
           const parsed = JSON.parse(rawJson);
-          setFormConfigValues(parsed);
+          if (typeof parsed === 'object' && parsed !== null) {
+            setFormConfigValues(parsed);
+          }
         }
       } catch {
         // invalid JSON; keep existing form values
       }
+    } else if (mode === 'json') {
+      if (Object.keys(formConfigValues).length > 0) {
+        setValue('config', JSON.stringify(formConfigValues, null, 2), {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
     }
     setViewMode(mode);
   };
 
   const onSubmit = async (values: FormValues) => {
     try {
+      const rawConfig = values.config?.trim() || '';
+      const configObj =
+        viewMode === 'form' && Object.keys(formConfigValues).length > 0
+          ? formConfigValues
+          : rawConfig
+          ? JSON.parse(rawConfig)
+          : {};
+
       const connector = await mutation.createResource({
         connectName: values.connectName,
         newConnector: {
           name: values.name,
-          config: JSON.parse(values.config.trim()),
+          config: configObj,
         },
       });
 
@@ -287,14 +307,25 @@ const New: React.FC = () => {
             </S.ModeButtonGroup>
           </S.ModeSwitcherWrapper>
 
-          {viewMode === 'form' && pluginConfigs.length > 0 ? (
-            <DynamicForm
-              configs={pluginConfigs}
-              values={formConfigValues}
-              onChange={handleFormFieldChange}
-              disabled={isSubmitting}
-            />
-          ) : (
+          {pluginConfigs.length > 0 && (
+            <div style={{ display: viewMode === 'form' ? 'block' : 'none' }}>
+              <DynamicForm
+                configs={pluginConfigs}
+                values={formConfigValues}
+                onChange={handleFormFieldChange}
+                disabled={isSubmitting}
+              />
+            </div>
+          )}
+
+          <div
+            style={{
+              display:
+                viewMode === 'json' || pluginConfigs.length === 0
+                  ? 'block'
+                  : 'none',
+            }}
+          >
             <Controller
               control={control}
               name="config"
@@ -302,7 +333,7 @@ const New: React.FC = () => {
                 <Editor {...field} readOnly={isSubmitting} ref={null} />
               )}
             />
-          )}
+          </div>
 
           <FormError>
             <ErrorMessage errors={errors} name="config" />

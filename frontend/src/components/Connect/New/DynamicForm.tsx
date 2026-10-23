@@ -140,7 +140,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                 onChange(key, !currentBool);
               }}
             />
-            <span style={{ fontSize: '13px' }}>{String(currentValue).toLowerCase() === 'true' ? 'true' : 'false'}</span>
+            <S.ToggleText>{String(currentValue).toLowerCase() === 'true' ? 'true' : 'false'}</S.ToggleText>
           </div>
         ) : type === 'INT' || type === 'LONG' || type === 'SHORT' || type === 'DOUBLE' ? (
           <Input
