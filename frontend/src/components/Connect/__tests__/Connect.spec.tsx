@@ -55,5 +55,10 @@ describe('Connect', () => {
       name: 'Connectors',
     });
     expect(connectorsNavigation).toBeInTheDocument();
+
+    const alertsNavigation = screen.getByRole('link', {
+      name: 'Alert Settings',
+    });
+    expect(alertsNavigation).toBeInTheDocument();
   });
 });
