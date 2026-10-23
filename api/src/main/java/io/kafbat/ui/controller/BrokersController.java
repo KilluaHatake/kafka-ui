@@ -1,6 +1,8 @@
 package io.kafbat.ui.controller;
 
 import io.kafbat.ui.api.BrokersApi;
+import io.kafbat.ui.config.auth.AuthenticatedUser;
+import io.kafbat.ui.exception.ApprovalRequiredException;
 import io.kafbat.ui.mapper.ClusterMapper;
 import io.kafbat.ui.model.BrokerConfigDTO;
 import io.kafbat.ui.model.BrokerConfigItemDTO;
@@ -8,10 +10,14 @@ import io.kafbat.ui.model.BrokerDTO;
 import io.kafbat.ui.model.BrokerLogdirUpdateDTO;
 import io.kafbat.ui.model.BrokerMetricsDTO;
 import io.kafbat.ui.model.BrokersLogdirsDTO;
+import io.kafbat.ui.model.approval.ApprovalRequest;
+import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
 import io.kafbat.ui.model.rbac.permission.ClusterConfigAction;
 import io.kafbat.ui.service.BrokerService;
+import io.kafbat.ui.service.approval.ApprovalService;
 import io.kafbat.ui.service.mcp.McpTool;
+import io.kafbat.ui.service.rbac.AccessControlService;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
@@ -31,6 +37,7 @@ public class BrokersController extends AbstractController implements BrokersApi,
 
   private final BrokerService brokerService;
   private final ClusterMapper clusterMapper;
+  private final ApprovalService approvalService;
 
   @Override
   public Mono<ResponseEntity<Flux<BrokerDTO>>> getBrokers(String clusterName,
@@ -141,10 +148,34 @@ public class BrokersController extends AbstractController implements BrokersApi,
         .build();
 
     return validateAccess(context).then(
-        brokerConfig
-            .flatMap(bci -> brokerService.updateBrokerConfigByName(
-                getCluster(clusterName), id, name, bci.getValue()))
-            .map(ResponseEntity::ok)
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .flatMap(user -> brokerConfig.flatMap(bci -> {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, user)) {
+                return brokerService.getBrokerConfig(getCluster(clusterName), id)
+                    .filter(c -> name.equals(c.getName()))
+                    .next()
+                    .map(c -> c.getValue() != null ? c.getValue() : "")
+                    .defaultIfEmpty("")
+                    .flatMap(oldVal -> approvalService.createRequest(
+                        clusterName,
+                        ApprovalTargetType.BROKER_CONFIG_UPDATE,
+                        "Broker " + id + ": " + name,
+                        null,
+                        user,
+                        Map.of(name, oldVal),
+                        Map.of(name, bci.getValue() != null ? bci.getValue() : ""),
+                        Map.of("brokerId", id, "configName", name, "configValue", bci.getValue() != null ? bci.getValue() : "")
+                    ))
+                    .<ResponseEntity<Void>>flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                        "Broker configuration update submitted for approval (ID: " + req.getId() + ")",
+                        req.getId()
+                    )));
+              }
+              return brokerService.updateBrokerConfigByName(
+                  getCluster(clusterName), id, name, bci.getValue())
+                  .map(ResponseEntity::ok);
+            }))
     ).doOnEach(sig -> audit(context, sig));
   }
 }

@@ -37,6 +37,9 @@ class ApprovalServiceTest {
   private TopicsService topicsService;
   private KafkaConnectService kafkaConnectService;
   private NotificationService notificationService;
+  private io.kafbat.ui.service.BrokerService brokerService;
+  private io.kafbat.ui.service.ConsumerGroupService consumerGroupService;
+  private io.kafbat.ui.config.ConnectAlertProperties alertProperties;
   private ApprovalService approvalService;
 
   private KafkaCluster cluster;
@@ -47,6 +50,10 @@ class ApprovalServiceTest {
     approvalProperties.setRequireTopicCreation(true);
     approvalProperties.setRequireTopicConfigUpdates(true);
     approvalProperties.setRequireConnectorDeployments(true);
+    approvalProperties.setRequireBrokerConfigUpdates(true);
+    approvalProperties.setRequireAlertSettingsUpdates(true);
+    approvalProperties.setRequireConsumerGroupDelete(true);
+    approvalProperties.setRequireConnectorResetOffsets(true);
     approvalProperties.setApproverRoles(List.of("Architect", "Admin"));
     approvalProperties.setDirectApplyRoles(List.of("Architect", "Admin"));
 
@@ -56,6 +63,9 @@ class ApprovalServiceTest {
     topicsService = mock(TopicsService.class);
     kafkaConnectService = mock(KafkaConnectService.class);
     notificationService = mock(NotificationService.class);
+    brokerService = mock(io.kafbat.ui.service.BrokerService.class);
+    consumerGroupService = mock(io.kafbat.ui.service.ConsumerGroupService.class);
+    alertProperties = new io.kafbat.ui.config.ConnectAlertProperties();
 
     cluster = KafkaCluster.builder().name("local-cluster").build();
 
@@ -66,7 +76,10 @@ class ApprovalServiceTest {
         auditService,
         topicsService,
         kafkaConnectService,
-        notificationService
+        notificationService,
+        brokerService,
+        consumerGroupService,
+        alertProperties
     );
   }
 
@@ -79,9 +92,17 @@ class ApprovalServiceTest {
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, architectUser)).isFalse();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, devUser)).isTrue();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, architectUser)).isFalse();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, architectUser)).isFalse();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.ALERT_SETTINGS_UPDATE, devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.ALERT_SETTINGS_UPDATE, architectUser)).isFalse();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, architectUser)).isFalse();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, architectUser)).isFalse();
 
-    approvalProperties.setRequireTopicCreation(false);
-    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, devUser)).isFalse();
+    approvalProperties.setRequireBrokerConfigUpdates(false);
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, devUser)).isFalse();
   }
 
   @Test

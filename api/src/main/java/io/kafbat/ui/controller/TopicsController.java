@@ -95,10 +95,13 @@ public class TopicsController extends AbstractController implements TopicsApi, M
                   if (topicCreation.getConfigs() != null) {
                     newConfig.putAll(topicCreation.getConfigs());
                   }
-                  Map<String, Object> metadata = Map.of(
-                      "partitions", topicCreation.getPartitions(),
-                      "replicationFactor", topicCreation.getReplicationFactor()
-                  );
+                  Map<String, Object> metadata = new HashMap<>();
+                  if (topicCreation.getPartitions() != null) {
+                    metadata.put("partitions", topicCreation.getPartitions());
+                  }
+                  if (topicCreation.getReplicationFactor() != null) {
+                    metadata.put("replicationFactor", topicCreation.getReplicationFactor());
+                  }
                   return approvalService.createRequest(
                       clusterName,
                       ApprovalTargetType.TOPIC_CREATE,

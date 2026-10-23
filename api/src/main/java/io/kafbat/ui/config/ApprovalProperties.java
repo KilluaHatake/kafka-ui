@@ -21,6 +21,10 @@ public class ApprovalProperties {
   private boolean requireTopicCreation = false;
   private boolean requireTopicConfigUpdates = false;
   private boolean requireConnectorDeployments = false;
+  private boolean requireBrokerConfigUpdates = false;
+  private boolean requireAlertSettingsUpdates = false;
+  private boolean requireConsumerGroupDelete = false;
+  private boolean requireConnectorResetOffsets = false;
 
   private List<String> directApplyRoles = new ArrayList<>(List.of("Architect", "Admin"));
   private List<String> approverRoles = new ArrayList<>(List.of("Architect", "Admin"));

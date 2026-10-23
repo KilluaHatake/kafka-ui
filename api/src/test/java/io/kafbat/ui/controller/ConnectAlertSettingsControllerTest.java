@@ -22,6 +22,8 @@ class ConnectAlertSettingsControllerTest {
   private ConnectAlertProperties alertProperties;
   private SlackNotificationClient slackClient;
   private EmailNotificationClient emailClient;
+  private io.kafbat.ui.service.approval.ApprovalService approvalService;
+  private io.kafbat.ui.service.ClustersStorage clustersStorage;
   private ConnectAlertSettingsController controller;
 
   @BeforeEach
@@ -43,11 +45,16 @@ class ConnectAlertSettingsControllerTest {
 
     slackClient = mock(SlackNotificationClient.class);
     emailClient = mock(EmailNotificationClient.class);
+    approvalService = mock(io.kafbat.ui.service.approval.ApprovalService.class);
+    clustersStorage = mock(io.kafbat.ui.service.ClustersStorage.class);
 
     when(slackClient.sendAlert(any(), any())).thenReturn(Mono.empty());
     when(emailClient.sendAlert(any(), any())).thenReturn(Mono.empty());
+    when(approvalService.isApprovalRequired(any(), any())).thenReturn(false);
 
-    controller = new ConnectAlertSettingsController(alertProperties, slackClient, emailClient);
+    controller = new ConnectAlertSettingsController(
+        alertProperties, slackClient, emailClient, approvalService, clustersStorage
+    );
   }
 
   @Test

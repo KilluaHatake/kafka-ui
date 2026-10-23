@@ -92,6 +92,10 @@ public class ApprovalController extends AbstractController {
       approvalProperties.setRequireTopicCreation(newSettings.isRequireTopicCreation());
       approvalProperties.setRequireTopicConfigUpdates(newSettings.isRequireTopicConfigUpdates());
       approvalProperties.setRequireConnectorDeployments(newSettings.isRequireConnectorDeployments());
+      approvalProperties.setRequireBrokerConfigUpdates(newSettings.isRequireBrokerConfigUpdates());
+      approvalProperties.setRequireAlertSettingsUpdates(newSettings.isRequireAlertSettingsUpdates());
+      approvalProperties.setRequireConsumerGroupDelete(newSettings.isRequireConsumerGroupDelete());
+      approvalProperties.setRequireConnectorResetOffsets(newSettings.isRequireConnectorResetOffsets());
       if (newSettings.getDirectApplyRoles() != null) {
         approvalProperties.setDirectApplyRoles(newSettings.getDirectApplyRoles());
       }

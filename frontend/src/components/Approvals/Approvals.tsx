@@ -43,6 +43,14 @@ const formatType = (type: ApprovalTargetType): string => {
       return 'Update Connector Config';
     case 'CONNECTOR_ACTION':
       return 'Connector Action';
+    case 'BROKER_CONFIG_UPDATE':
+      return 'Update Broker Config';
+    case 'ALERT_SETTINGS_UPDATE':
+      return 'Update Alert Settings';
+    case 'CONSUMER_GROUP_DELETE':
+      return 'Delete Consumer Group';
+    case 'CONNECTOR_RESET_OFFSETS':
+      return 'Reset Connector Offsets';
     default:
       return type;
   }
@@ -154,6 +162,10 @@ const Approvals: React.FC = () => {
             <option value="CONNECTOR_CREATE">Connector Creation</option>
             <option value="CONNECTOR_UPDATE">Connector Config Update</option>
             <option value="CONNECTOR_ACTION">Connector State Action</option>
+            <option value="BROKER_CONFIG_UPDATE">Broker Config Update</option>
+            <option value="ALERT_SETTINGS_UPDATE">Alert Settings Update</option>
+            <option value="CONSUMER_GROUP_DELETE">Delete Consumer Group</option>
+            <option value="CONNECTOR_RESET_OFFSETS">Reset Connector Offsets</option>
           </select>
         </S.FilterItem>
       </S.Filters>

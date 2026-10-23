@@ -22,6 +22,10 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     requireTopicCreation: true,
     requireTopicConfigUpdates: true,
     requireConnectorDeployments: true,
+    requireBrokerConfigUpdates: true,
+    requireAlertSettingsUpdates: true,
+    requireConsumerGroupDelete: true,
+    requireConnectorResetOffsets: true,
     approverRoles: ['Architect', 'Admin'],
     directApplyRoles: ['Architect', 'Admin'],
   });
@@ -122,6 +126,82 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </label>
             <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
               When enabled, creating or editing connectors requires architect approval.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={formState.requireBrokerConfigUpdates}
+                onChange={(e) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    requireBrokerConfigUpdates: e.target.checked,
+                  }))
+                }
+              />
+              Require approval for Broker Configuration Changes
+            </label>
+            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+              When enabled, updating broker configuration properties requires architect review.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={formState.requireAlertSettingsUpdates}
+                onChange={(e) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    requireAlertSettingsUpdates: e.target.checked,
+                  }))
+                }
+              />
+              Require approval for Error Alert Notification Settings
+            </label>
+            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+              When enabled, changing Slack or Email alert notification settings requires approval.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={formState.requireConsumerGroupDelete}
+                onChange={(e) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    requireConsumerGroupDelete: e.target.checked,
+                  }))
+                }
+              />
+              Require approval for Consumer Group Deletion
+            </label>
+            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+              When enabled, deleting a consumer group requires architect approval.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={formState.requireConnectorResetOffsets}
+                onChange={(e) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    requireConnectorResetOffsets: e.target.checked,
+                  }))
+                }
+              />
+              Require approval for Kafka Connect Offset Resets
+            </label>
+            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+              When enabled, resetting connector offsets requires architect approval.
             </div>
           </div>
 

@@ -7,6 +7,8 @@ import static java.lang.Boolean.TRUE;
 import static java.util.stream.Collectors.toMap;
 
 import io.kafbat.ui.api.ConsumerGroupsApi;
+import io.kafbat.ui.config.auth.AuthenticatedUser;
+import io.kafbat.ui.exception.ApprovalRequiredException;
 import io.kafbat.ui.exception.ValidationException;
 import io.kafbat.ui.mapper.ConsumerGroupMapper;
 import io.kafbat.ui.model.ConsumerGroupDTO;
@@ -18,11 +20,15 @@ import io.kafbat.ui.model.ConsumerGroupsLagResponseDTO;
 import io.kafbat.ui.model.ConsumerGroupsPageResponseDTO;
 import io.kafbat.ui.model.PartitionOffsetDTO;
 import io.kafbat.ui.model.SortOrderDTO;
+import io.kafbat.ui.model.approval.ApprovalRequest;
+import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
 import io.kafbat.ui.model.rbac.permission.TopicAction;
 import io.kafbat.ui.service.ConsumerGroupService;
 import io.kafbat.ui.service.OffsetsResetService;
+import io.kafbat.ui.service.approval.ApprovalService;
 import io.kafbat.ui.service.mcp.McpTool;
+import io.kafbat.ui.service.rbac.AccessControlService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +53,7 @@ public class ConsumerGroupsController extends AbstractController implements Cons
 
   private final ConsumerGroupService consumerGroupService;
   private final OffsetsResetService offsetsResetService;
+  private final ApprovalService approvalService;
 
   @Value("${consumer.groups.page.size:25}")
   private int defaultConsumerGroupsPageSize;
@@ -61,10 +68,29 @@ public class ConsumerGroupsController extends AbstractController implements Cons
         .operationName("deleteConsumerGroup")
         .build();
 
-    return validateAccess(context)
-        .then(consumerGroupService.deleteConsumerGroupById(getCluster(clusterName), id))
-        .doOnEach(sig -> audit(context, sig))
-        .thenReturn(ResponseEntity.ok().build());
+    return validateAccess(context).then(
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .<ResponseEntity<Void>>flatMap(user -> {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, user)) {
+                return approvalService.createRequest(
+                    clusterName,
+                    ApprovalTargetType.CONSUMER_GROUP_DELETE,
+                    id,
+                    null,
+                    user,
+                    Map.of("consumerGroupId", id, "action", "ACTIVE"),
+                    Map.of("consumerGroupId", id, "action", "DELETED"),
+                    Map.of("consumerGroupId", id)
+                ).<ResponseEntity<Void>>flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                    "Consumer group deletion submitted for approval (ID: " + req.getId() + ")",
+                    req.getId()
+                )));
+              }
+              return consumerGroupService.deleteConsumerGroupById(getCluster(clusterName), id)
+                  .thenReturn(ResponseEntity.ok().<Void>build());
+            })
+    ).doOnEach(sig -> audit(context, sig));
   }
 
   @Override

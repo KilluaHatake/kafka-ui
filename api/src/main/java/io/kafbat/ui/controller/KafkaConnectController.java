@@ -401,9 +401,28 @@ public class KafkaConnectController extends AbstractController implements KafkaC
         .build();
 
     return validateAccess(context).then(
-        kafkaConnectService
-            .resetConnectorOffsets(getCluster(clusterName), connectName, connectorName)
-            .map(ResponseEntity::ok))
-        .doOnEach(sig -> audit(context, sig));
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .flatMap(user -> {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, user)) {
+                return approvalService.createRequest(
+                    clusterName,
+                    ApprovalTargetType.CONNECTOR_RESET_OFFSETS,
+                    connectorName,
+                    connectName,
+                    user,
+                    Map.of("status", "ACTIVE_OFFSETS"),
+                    Map.of("status", "RESET_OFFSETS"),
+                    Map.of("connectName", connectName, "connectorName", connectorName)
+                ).<ResponseEntity<Void>>flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                    "Connector offset reset submitted for approval (ID: " + req.getId() + ")",
+                    req.getId()
+                )));
+              }
+              return kafkaConnectService
+                  .resetConnectorOffsets(getCluster(clusterName), connectName, connectorName)
+                  .thenReturn(ResponseEntity.ok().<Void>build());
+            })
+    ).doOnEach(sig -> audit(context, sig));
   }
 }

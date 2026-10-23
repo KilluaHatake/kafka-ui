@@ -20,6 +20,10 @@ public class ApprovalSettingsDto {
   private boolean requireTopicCreation;
   private boolean requireTopicConfigUpdates;
   private boolean requireConnectorDeployments;
+  private boolean requireBrokerConfigUpdates;
+  private boolean requireAlertSettingsUpdates;
+  private boolean requireConsumerGroupDelete;
+  private boolean requireConnectorResetOffsets;
   private List<String> directApplyRoles;
   private List<String> approverRoles;
 
@@ -31,6 +35,10 @@ public class ApprovalSettingsDto {
         .requireTopicCreation(props.isRequireTopicCreation())
         .requireTopicConfigUpdates(props.isRequireTopicConfigUpdates())
         .requireConnectorDeployments(props.isRequireConnectorDeployments())
+        .requireBrokerConfigUpdates(props.isRequireBrokerConfigUpdates())
+        .requireAlertSettingsUpdates(props.isRequireAlertSettingsUpdates())
+        .requireConsumerGroupDelete(props.isRequireConsumerGroupDelete())
+        .requireConnectorResetOffsets(props.isRequireConnectorResetOffsets())
         .directApplyRoles(props.getDirectApplyRoles())
         .approverRoles(props.getApproverRoles())
         .build();

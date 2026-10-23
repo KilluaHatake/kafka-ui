@@ -16,6 +16,9 @@ import io.kafbat.ui.model.approval.ApprovalStatus;
 import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
 import io.kafbat.ui.service.AdminClientService;
+import io.kafbat.ui.service.BrokerService;
+import io.kafbat.ui.service.ConsumerGroupService;
+import io.kafbat.ui.config.ConnectAlertProperties;
 import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.MessagesService;
@@ -63,6 +66,9 @@ public class ApprovalService implements Closeable {
   private final TopicsService topicsService;
   private final KafkaConnectService kafkaConnectService;
   private final NotificationService notificationService;
+  private final BrokerService brokerService;
+  private final ConsumerGroupService consumerGroupService;
+  private final ConnectAlertProperties alertProperties;
 
   // In-memory cache: clusterName -> (requestId -> ApprovalRequest)
   private final Map<String, Map<String, ApprovalRequest>> requestsCache = new ConcurrentHashMap<>();
@@ -85,6 +91,10 @@ public class ApprovalService implements Closeable {
       case TOPIC_CREATE -> approvalProperties.isRequireTopicCreation();
       case TOPIC_CONFIG_UPDATE -> approvalProperties.isRequireTopicConfigUpdates();
       case CONNECTOR_CREATE, CONNECTOR_UPDATE, CONNECTOR_ACTION -> approvalProperties.isRequireConnectorDeployments();
+      case BROKER_CONFIG_UPDATE -> approvalProperties.isRequireBrokerConfigUpdates();
+      case ALERT_SETTINGS_UPDATE -> approvalProperties.isRequireAlertSettingsUpdates();
+      case CONSUMER_GROUP_DELETE -> approvalProperties.isRequireConsumerGroupDelete();
+      case CONNECTOR_RESET_OFFSETS -> approvalProperties.isRequireConnectorResetOffsets();
     };
 
     if (!gated) {
@@ -306,7 +316,86 @@ public class ApprovalService implements Closeable {
         yield kafkaConnectService.updateConnectorState(
             cluster, request.getConnectName(), request.getTargetName(), action);
       }
+      case BROKER_CONFIG_UPDATE -> {
+        Integer brokerId = (Integer) request.getMetadata().get("brokerId");
+        String configName = (String) request.getMetadata().get("configName");
+        String configValue = (String) request.getMetadata().get("configValue");
+        yield brokerService.updateBrokerConfigByName(cluster, brokerId, configName, configValue);
+      }
+      case ALERT_SETTINGS_UPDATE -> {
+        applyAlertSettingsUpdate(request.getNewConfig());
+        yield Mono.empty();
+      }
+      case CONSUMER_GROUP_DELETE -> consumerGroupService.deleteConsumerGroupById(cluster, request.getTargetName());
+      case CONNECTOR_RESET_OFFSETS -> kafkaConnectService.resetConnectorOffsets(
+          cluster, request.getConnectName(), request.getTargetName()
+      );
     };
+  }
+
+  @SuppressWarnings("unchecked")
+  private void applyAlertSettingsUpdate(Map<String, Object> newConfig) {
+    if (newConfig == null) {
+      return;
+    }
+    if (newConfig.containsKey("enabled")) {
+      alertProperties.setEnabled(Boolean.parseBoolean(String.valueOf(newConfig.get("enabled"))));
+    }
+    if (newConfig.containsKey("pollingIntervalMs")) {
+      try {
+        alertProperties.setPollingIntervalMs(Long.parseLong(String.valueOf(newConfig.get("pollingIntervalMs"))));
+      } catch (NumberFormatException ignored) {}
+    }
+    if (newConfig.containsKey("throttleIntervalMinutes")) {
+      try {
+        alertProperties.setThrottleIntervalMinutes(Integer.parseInt(String.valueOf(newConfig.get("throttleIntervalMinutes"))));
+      } catch (NumberFormatException ignored) {}
+    }
+    if (newConfig.get("slack") instanceof Map<?, ?> slackMap) {
+      if (slackMap.containsKey("enabled")) {
+        alertProperties.getSlack().setEnabled(Boolean.parseBoolean(String.valueOf(slackMap.get("enabled"))));
+      }
+      if (slackMap.containsKey("webhookUrl")) {
+        alertProperties.getSlack().setWebhookUrl((String) slackMap.get("webhookUrl"));
+      }
+      if (slackMap.containsKey("channel")) {
+        alertProperties.getSlack().setChannel((String) slackMap.get("channel"));
+      }
+    }
+    if (newConfig.get("email") instanceof Map<?, ?> emailMap) {
+      if (emailMap.containsKey("enabled")) {
+        alertProperties.getEmail().setEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("enabled"))));
+      }
+      if (emailMap.containsKey("smtpHost")) {
+        alertProperties.getEmail().setSmtpHost((String) emailMap.get("smtpHost"));
+      }
+      if (emailMap.containsKey("smtpPort")) {
+        try {
+          alertProperties.getEmail().setSmtpPort(Integer.parseInt(String.valueOf(emailMap.get("smtpPort"))));
+        } catch (NumberFormatException ignored) {}
+      }
+      if (emailMap.containsKey("username")) {
+        alertProperties.getEmail().setUsername((String) emailMap.get("username"));
+      }
+      if (emailMap.containsKey("password")) {
+        String pass = (String) emailMap.get("password");
+        if (pass != null && !pass.isBlank() && !pass.equals("********")) {
+          alertProperties.getEmail().setPassword(pass);
+        }
+      }
+      if (emailMap.containsKey("starttlsEnabled")) {
+        alertProperties.getEmail().setStarttlsEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("starttlsEnabled"))));
+      }
+      if (emailMap.containsKey("sslEnabled")) {
+        alertProperties.getEmail().setSslEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("sslEnabled"))));
+      }
+      if (emailMap.containsKey("from")) {
+        alertProperties.getEmail().setFrom((String) emailMap.get("from"));
+      }
+      if (emailMap.get("recipients") instanceof List<?> list) {
+        alertProperties.getEmail().setRecipients(list.stream().map(String::valueOf).toList());
+      }
+    }
   }
 
   private void initTopicAndProducer(KafkaCluster cluster) {

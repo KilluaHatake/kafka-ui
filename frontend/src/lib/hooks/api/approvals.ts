@@ -12,7 +12,11 @@ export type ApprovalTargetType =
   | 'TOPIC_CONFIG_UPDATE'
   | 'CONNECTOR_CREATE'
   | 'CONNECTOR_UPDATE'
-  | 'CONNECTOR_ACTION';
+  | 'CONNECTOR_ACTION'
+  | 'BROKER_CONFIG_UPDATE'
+  | 'ALERT_SETTINGS_UPDATE'
+  | 'CONSUMER_GROUP_DELETE'
+  | 'CONNECTOR_RESET_OFFSETS';
 
 export interface ApprovalRequest {
   id: string;
@@ -39,6 +43,10 @@ export interface ApprovalProperties {
   requireTopicCreation: boolean;
   requireTopicConfigUpdates: boolean;
   requireConnectorDeployments: boolean;
+  requireBrokerConfigUpdates: boolean;
+  requireAlertSettingsUpdates: boolean;
+  requireConsumerGroupDelete: boolean;
+  requireConnectorResetOffsets: boolean;
   approverRoles: string[];
   directApplyRoles: string[];
 }
