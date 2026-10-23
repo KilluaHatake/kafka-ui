@@ -272,6 +272,34 @@ public class ApprovalService implements Closeable {
     });
   }
 
+  public Mono<Void> deleteRequest(
+      KafkaCluster cluster,
+      String id,
+      AuthenticatedUser user
+  ) {
+    return getRequest(cluster.getName(), id).flatMap(request -> {
+      boolean isRequester = request.getRequesterEmail() != null
+          && request.getRequesterEmail().equalsIgnoreCase(user.principal());
+      boolean approver = isApprover(user);
+
+      if (!isRequester && !approver) {
+        return Mono.error(new AccessDeniedException("User is not authorized to delete this request"));
+      }
+      if (request.getStatus() != ApprovalStatus.PENDING) {
+        return Mono.error(new ValidationException("Only PENDING requests can be deleted. Current status: " + request.getStatus()));
+      }
+
+      requestsCache.computeIfPresent(cluster.getName(), (k, map) -> {
+        map.remove(id);
+        return map;
+      });
+      writeTombstoneToTopic(cluster.getName(), id);
+
+      log.info("Approval request {} deleted by '{}'", id, user.principal());
+      return Mono.empty();
+    });
+  }
+
   @SuppressWarnings("unchecked")
   private Mono<Void> executeApprovedAction(KafkaCluster cluster, ApprovalRequest request) {
     return switch (request.getType()) {
@@ -467,6 +495,12 @@ public class ApprovalService implements Closeable {
               log.warn("Failed to deserialize approval record at offset {} in {}",
                   record.offset(), record.partition(), ex);
             }
+          } else if (record.key() != null) {
+            String tombstoneId = new String(record.key(), UTF_8);
+            requestsCache.computeIfPresent(cluster.getName(), (k, map) -> {
+              map.remove(tombstoneId);
+              return map;
+            });
           }
         }
         boolean finished = partitions.stream()
@@ -516,6 +550,28 @@ public class ApprovalService implements Closeable {
         );
       } catch (Exception e) {
         log.warn("Error serializing approval request for topic write", e);
+      }
+    }
+  }
+
+  private void writeTombstoneToTopic(String clusterName, String id) {
+    KafkaProducer<byte[], byte[]> producer = producers.computeIfAbsent(clusterName, name ->
+        clustersStorage.getClusterByName(name)
+            .map(c -> MessagesService.createProducer(c, Map.of()))
+            .orElse(null)
+    );
+    if (producer != null) {
+      try {
+        producer.send(
+            new ProducerRecord<>(approvalProperties.getTopic(), id.getBytes(UTF_8), null),
+            (metadata, ex) -> {
+              if (ex != null) {
+                log.warn("Error writing approval tombstone to topic on cluster {}", clusterName, ex);
+              }
+            }
+        );
+      } catch (Exception e) {
+        log.warn("Error sending approval tombstone to topic", e);
       }
     }
   }

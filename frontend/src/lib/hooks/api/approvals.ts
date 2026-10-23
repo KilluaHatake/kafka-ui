@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BASE_PARAMS } from 'lib/constants';
+import { showAlert } from 'lib/errorHandling';
+import { clusterApprovalsPath } from 'lib/paths';
 
 export type ApprovalStatus =
   | 'PENDING'
-  | 'EXECUTED'
+  | 'APPROVED'
   | 'REJECTED'
-  | 'EXECUTION_FAILED';
+  | 'EXECUTED'
+  | 'EXECUTION_FAILED'
+  | 'CANCELLED';
 
 export type ApprovalTargetType =
   | 'TOPIC_CREATE'
@@ -49,6 +53,12 @@ export interface ApprovalProperties {
   requireConnectorResetOffsets: boolean;
   approverRoles: string[];
   directApplyRoles: string[];
+}
+
+export interface ApprovalPermissions {
+  username: string;
+  roles: string[];
+  canApprove: boolean;
 }
 
 const getBaseUrl = () => BASE_PARAMS.basePath || '';
@@ -159,6 +169,79 @@ export const approvalsApi = {
     }
     return res.json();
   },
+
+  getPermissions: async (clusterName: string): Promise<ApprovalPermissions> => {
+    const res = await fetch(
+      `${getBaseUrl()}/api/clusters/${encodeURIComponent(clusterName)}/approvals/permissions`,
+      {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+    if (!res.ok) {
+      return { username: '', roles: [], canApprove: true };
+    }
+    return res.json();
+  },
+
+  deleteApproval: async (clusterName: string, id: string): Promise<void> => {
+    const res = await fetch(
+      `${getBaseUrl()}/api/clusters/${encodeURIComponent(clusterName)}/approvals/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Failed to delete approval request: ${res.statusText}`);
+    }
+  },
+};
+
+export function useApprovalPermissions(clusterName: string) {
+  return useQuery({
+    queryKey: ['clusters', clusterName, 'approvals', 'permissions'],
+    queryFn: () => approvalsApi.getPermissions(clusterName),
+    staleTime: 30000,
+  });
+}
+
+export function useDeleteApproval(clusterName: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => approvalsApi.deleteApproval(clusterName, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['clusters', clusterName, 'approvals'],
+      });
+    },
+  });
+}
+
+export const isApprovalResponse = (res: any): boolean => {
+  if (!res) return false;
+  if (res.status === 202 || res.code === 4022) return true;
+  if (typeof res.message === 'string' && res.message.toLowerCase().includes('approval')) return true;
+  return false;
+};
+
+export const handleApprovalRedirect = (
+  resOrError: any,
+  clusterName: string,
+  navigate: (path: string) => void,
+  defaultMessage = 'Request submitted to approval queue.'
+): boolean => {
+  if (isApprovalResponse(resOrError)) {
+    showAlert('warning', {
+      title: 'Sent for Approval',
+      message: resOrError?.message || defaultMessage,
+    });
+    navigate(clusterApprovalsPath(clusterName));
+    return true;
+  }
+  return false;
 };
 
 export function useApprovals(

@@ -35,6 +35,7 @@ import { useConnectors } from 'lib/hooks/api/kafkaConnect';
 import { useGetConsumerGroupLagsInfo } from 'components/ConsumerGroups/Details/useGetConsumerGroupLagsInfo';
 
 import { TopicsTable } from './TopicsTable/TopicsTable';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 
 const isConnect = (groupId: string | undefined) =>
   groupId?.startsWith('connect-');
@@ -72,8 +73,31 @@ const Details: React.FC = () => {
     });
 
   const onDelete = async () => {
-    await deleteConsumerGroup.mutateAsync();
-    navigate('../');
+    try {
+      const res: any = await deleteConsumerGroup.mutateAsync();
+      if (
+        handleApprovalRedirect(
+          res,
+          clusterName,
+          navigate,
+          'Consumer group deletion submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
+      navigate('../');
+    } catch (e: any) {
+      if (
+        handleApprovalRedirect(
+          e,
+          clusterName,
+          navigate,
+          'Consumer group deletion submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
+    }
   };
 
   const onResetOffsets = () => {

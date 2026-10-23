@@ -5,5 +5,6 @@ public enum ApprovalStatus {
   APPROVED,
   REJECTED,
   EXECUTED,
-  EXECUTION_FAILED
+  EXECUTION_FAILED,
+  CANCELLED
 }

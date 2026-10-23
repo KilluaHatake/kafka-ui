@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import useAppParams from 'lib/hooks/useAppParams';
 import { ClusterNameRoute } from 'lib/paths';
 import { Button } from 'components/common/Button/Button';
-import { Tag } from 'components/common/Tag/Tag.styled';
 import PageLoader from 'components/common/PageLoader/PageLoader';
+import { useConfirm } from 'lib/hooks/useConfirm';
 import {
   useApprovals,
   useApproveRequest,
   useRejectRequest,
+  useDeleteApproval,
+  useApprovalPermissions,
   ApprovalRequest,
   ApprovalStatus,
   ApprovalTargetType,
@@ -16,20 +18,6 @@ import * as S from './Approvals.styled';
 import ApprovalDetailsModal from './ApprovalDetailsModal';
 import RejectModal from './RejectModal';
 import ApprovalSettingsModal from './ApprovalSettingsModal';
-
-const getTagColor = (status: string): 'yellow' | 'green' | 'red' | 'gray' => {
-  switch (status) {
-    case 'PENDING':
-      return 'yellow';
-    case 'EXECUTED':
-      return 'green';
-    case 'REJECTED':
-    case 'EXECUTION_FAILED':
-      return 'red';
-    default:
-      return 'gray';
-  }
-};
 
 const formatType = (type: ApprovalTargetType): string => {
   switch (type) {
@@ -58,6 +46,7 @@ const formatType = (type: ApprovalTargetType): string => {
 
 const Approvals: React.FC = () => {
   const { clusterName } = useAppParams<ClusterNameRoute>();
+  const confirm = useConfirm(true);
 
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
@@ -68,6 +57,9 @@ const Approvals: React.FC = () => {
   const [isRejectOpen, setIsRejectOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  const { data: permissions } = useApprovalPermissions(clusterName);
+  const canApprove = permissions?.canApprove ?? true;
+
   const { data: requests = [], isLoading, refetch } = useApprovals(
     clusterName,
     (statusFilter as ApprovalStatus) || undefined,
@@ -76,6 +68,7 @@ const Approvals: React.FC = () => {
 
   const approveMutation = useApproveRequest(clusterName);
   const rejectMutation = useRejectRequest(clusterName);
+  const deleteMutation = useDeleteApproval(clusterName);
 
   const handleApprove = (id: string) => {
     approveMutation.mutate(id, {
@@ -89,6 +82,24 @@ const Approvals: React.FC = () => {
   const handleRejectClick = (req: ApprovalRequest) => {
     setRejectRequestTarget(req);
     setIsRejectOpen(true);
+  };
+
+  const handleDeleteClick = (req: ApprovalRequest) => {
+    confirm(
+      <>
+        Are you sure you want to delete the pending approval request for{' '}
+        <b>{req.targetName}</b>?
+        <br />
+        <span style={{ fontSize: '12px', color: '#888' }}>
+          This will remove the request from the queue so you can raise a fresh request with changes.
+        </span>
+      </>,
+      async () => {
+        await deleteMutation.mutateAsync(req.id);
+        setIsDetailsOpen(false);
+        refetch();
+      }
+    );
   };
 
   const handleConfirmReject = (id: string, reason: string) => {
@@ -206,7 +217,7 @@ const Approvals: React.FC = () => {
                     <td>{req.requesterEmail}</td>
                     <td>{new Date(req.createdAt).toLocaleString()}</td>
                     <td>
-                      <Tag color={getTagColor(req.status)}>{req.status}</Tag>
+                      <S.StatusBadge $status={req.status}>{req.status}</S.StatusBadge>
                     </td>
                     <td>
                       <S.ActionGroup>
@@ -226,18 +237,35 @@ const Approvals: React.FC = () => {
                               buttonType="primary"
                               buttonSize="S"
                               onClick={() => handleApprove(req.id)}
+                              disabled={!canApprove}
+                              title={
+                                !canApprove
+                                  ? 'Only Approver roles (Architect/Admin) can approve requests'
+                                  : undefined
+                              }
                               inProgress={approveMutation?.isPending}
                             >
                               Approve
                             </Button>
-                            <Button
-                              buttonType="danger"
-                              buttonSize="S"
-                              onClick={() => handleRejectClick(req)}
-                              inProgress={rejectMutation?.isPending}
-                            >
-                              Reject
-                            </Button>
+                            {canApprove ? (
+                              <Button
+                                buttonType="danger"
+                                buttonSize="S"
+                                onClick={() => handleRejectClick(req)}
+                                inProgress={rejectMutation?.isPending}
+                              >
+                                Reject
+                              </Button>
+                            ) : (
+                              <Button
+                                buttonType="danger"
+                                buttonSize="S"
+                                onClick={() => handleDeleteClick(req)}
+                                inProgress={deleteMutation?.isPending}
+                              >
+                                Delete
+                              </Button>
+                            )}
                           </>
                         )}
                       </S.ActionGroup>
@@ -256,6 +284,8 @@ const Approvals: React.FC = () => {
         onClose={() => setIsDetailsOpen(false)}
         onApprove={handleApprove}
         onRejectClick={handleRejectClick}
+        onDeleteClick={handleDeleteClick}
+        isApprover={canApprove}
       />
 
       <RejectModal

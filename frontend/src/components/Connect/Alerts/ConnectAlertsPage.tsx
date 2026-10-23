@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import useAppParams from 'lib/hooks/useAppParams';
+import { ClusterNameRoute } from 'lib/paths';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 import Switch from 'components/common/Switch/Switch';
 import { Button } from 'components/common/Button/Button';
 import * as InputStyled from 'components/common/Input/Input.styled';
@@ -34,6 +38,8 @@ const DEFAULT_SETTINGS: ConnectAlertSettings = {
 };
 
 const ConnectAlertsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { clusterName } = useAppParams<ClusterNameRoute>();
   const { data: serverSettings, isLoading, isError } = useConnectAlertSettings();
   const updateMutation = useUpdateConnectAlertSettings();
   const testAlertMutation = useSendTestAlert();
@@ -69,10 +75,30 @@ const ConnectAlertsPage: React.FC = () => {
 
   const handleSave = () => {
     updateMutation.mutate(formState, {
-      onSuccess: () => {
+      onSuccess: (res: any) => {
+        if (
+          handleApprovalRedirect(
+            res,
+            clusterName,
+            navigate,
+            'Alert settings update submitted to approval queue.'
+          )
+        ) {
+          return;
+        }
         toast.success('Connect alert settings saved successfully');
       },
-      onError: (err) => {
+      onError: (err: any) => {
+        if (
+          handleApprovalRedirect(
+            err,
+            clusterName,
+            navigate,
+            'Alert settings update submitted to approval queue.'
+          )
+        ) {
+          return;
+        }
         toast.error(`Failed to save settings: ${err.message}`);
       },
     });

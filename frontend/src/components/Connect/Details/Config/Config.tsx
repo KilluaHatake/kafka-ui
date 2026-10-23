@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAppParams from 'lib/hooks/useAppParams';
 import { Controller, useForm } from 'react-hook-form';
 import { ErrorMessage } from '@hookform/error-message';
@@ -7,6 +8,7 @@ import { RouterParamsClusterConnectConnector } from 'lib/paths';
 import yup from 'lib/yupExtended';
 import Editor from 'components/common/Editor/Editor';
 import { Button } from 'components/common/Button/Button';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 import {
   useConnectorConfig,
   useUpdateConnectorConfig,
@@ -27,6 +29,7 @@ interface FormValues {
 
 const Config: React.FC = () => {
   const routerParams = useAppParams<RouterParamsClusterConnectConnector>();
+  const navigate = useNavigate();
   const { data: config } = useConnectorConfig(routerParams);
   const mutation = useUpdateConnectorConfig(routerParams);
 
@@ -53,10 +56,29 @@ const Config: React.FC = () => {
   const onSubmit = async (values: FormValues) => {
     try {
       const requestBody = JSON.parse(values.config.trim());
-      await mutation.mutateAsync(requestBody);
+      const res: any = await mutation.mutateAsync(requestBody);
+      if (
+        handleApprovalRedirect(
+          res,
+          routerParams.clusterName,
+          navigate,
+          'Connector config update submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
       reset(values);
-    } catch {
-      // do nothing
+    } catch (e: any) {
+      if (
+        handleApprovalRedirect(
+          e,
+          routerParams.clusterName,
+          navigate,
+          'Connector config update submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
     }
   };
 

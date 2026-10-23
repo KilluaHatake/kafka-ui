@@ -133,11 +133,56 @@ export const InfoItem = styled.div`
     color: ${({ theme }) => theme.table.th.color.normal};
   }
 
-  span:last-child {
+  span:last-child:not([role="status"]) {
     font-size: 14px;
     color: ${({ theme }) => theme.heading.base.color};
     font-weight: 500;
   }
+`;
+
+export const StatusBadge = styled.span.attrs({ role: 'status' })<{ $status: string }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: max-content;
+  line-height: 1.3;
+
+  ${({ $status }) => {
+    switch ($status) {
+      case 'PENDING':
+        return `
+          background-color: rgba(234, 179, 8, 0.16);
+          border: 1px solid rgba(234, 179, 8, 0.45);
+          color: #eab308 !important;
+        `;
+      case 'EXECUTED':
+      case 'APPROVED':
+        return `
+          background-color: rgba(34, 197, 94, 0.16);
+          border: 1px solid rgba(34, 197, 94, 0.45);
+          color: #22c55e !important;
+        `;
+      case 'REJECTED':
+      case 'EXECUTION_FAILED':
+        return `
+          background-color: rgba(239, 68, 68, 0.16);
+          border: 1px solid rgba(239, 68, 68, 0.45);
+          color: #ef4444 !important;
+        `;
+      default:
+        return `
+          background-color: rgba(156, 163, 175, 0.16);
+          border: 1px solid rgba(156, 163, 175, 0.45);
+          color: #9ca3af !important;
+        `;
+    }
+  }}
 `;
 
 export const DiffContainer = styled.div`

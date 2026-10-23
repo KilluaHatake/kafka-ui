@@ -18,6 +18,7 @@ import {
   clusterConnectorsPath,
   RouterParamsClusterConnectConnector,
 } from 'lib/paths';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 import { useConfirm } from 'lib/hooks/useConfirm';
 import { Dropdown } from 'components/common/Dropdown';
 import { ActionDropdownItem } from 'components/common/ActionComponent';
@@ -72,7 +73,24 @@ const Actions: React.FC = () => {
         Are you sure you want to reset the <b>{routerProps.connectorName}</b>{' '}
         connector offsets?
       </>,
-      () => resetConnectorOffsetsMutation.mutateAsync()
+      async () => {
+        try {
+          const res: any = await resetConnectorOffsetsMutation.mutateAsync();
+          handleApprovalRedirect(
+            res,
+            routerProps.clusterName,
+            navigate,
+            'Connector offset reset request submitted to approval queue.'
+          );
+        } catch (e: any) {
+          handleApprovalRedirect(
+            e,
+            routerProps.clusterName,
+            navigate,
+            'Connector offset reset request submitted to approval queue.'
+          );
+        }
+      }
     );
 
   const connectorPath = `${routerProps.connectName}/${routerProps.connectorName}`;

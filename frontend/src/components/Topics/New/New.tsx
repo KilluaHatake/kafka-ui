@@ -9,7 +9,7 @@ import useAppParams from 'lib/hooks/useAppParams';
 import { useCreateTopic } from 'lib/hooks/api/topics';
 import { TopicFormData } from 'lib/interfaces/topic';
 import ResourcePageHeading from 'components/common/ResourcePageHeading/ResourcePageHeading';
-import { showAlert } from 'lib/errorHandling';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 
 enum Filters {
   NAME = 'name',
@@ -41,20 +41,28 @@ const New: React.FC = () => {
 
   const onSubmit = async (data: TopicFormData) => {
     try {
-      await createTopic.createResource(data);
+      const res: any = await createTopic.createResource(data);
+      if (
+        handleApprovalRedirect(
+          res,
+          clusterName,
+          navigate,
+          'Topic creation request submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
       navigate(`../${data.name}`);
     } catch (e: any) {
       if (
-        e?.status === 202 ||
-        (e?.message && e.message.toLowerCase().includes('approval'))
+        handleApprovalRedirect(
+          e,
+          clusterName,
+          navigate,
+          'Topic creation request submitted to approval queue.'
+        )
       ) {
-        showAlert('warning', {
-          title: 'Approval Required',
-          message:
-            e.message ||
-            'Topic creation request submitted to approval queue.',
-        });
-        navigate(clusterApprovalsPath(clusterName));
+        return;
       }
     }
   };

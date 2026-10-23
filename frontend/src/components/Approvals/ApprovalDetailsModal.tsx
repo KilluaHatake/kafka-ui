@@ -1,7 +1,6 @@
 import React from 'react';
 import Modal from 'components/common/Modal/Modal';
 import { Button } from 'components/common/Button/Button';
-import { Tag } from 'components/common/Tag/Tag.styled';
 import DiffViewer from 'components/common/DiffViewer/DiffViewer';
 import { SchemaType } from 'generated-sources';
 import { ApprovalRequest } from 'lib/hooks/api/approvals';
@@ -13,22 +12,9 @@ interface Props {
   onClose: () => void;
   onApprove: (id: string) => void;
   onRejectClick: (request: ApprovalRequest) => void;
+  onDeleteClick?: (request: ApprovalRequest) => void;
   isApprover?: boolean;
 }
-
-const getTagColor = (status: string): 'yellow' | 'green' | 'red' | 'gray' => {
-  switch (status) {
-    case 'PENDING':
-      return 'yellow';
-    case 'EXECUTED':
-      return 'green';
-    case 'REJECTED':
-    case 'EXECUTION_FAILED':
-      return 'red';
-    default:
-      return 'gray';
-  }
-};
 
 const ApprovalDetailsModal: React.FC<Props> = ({
   request,
@@ -36,6 +22,7 @@ const ApprovalDetailsModal: React.FC<Props> = ({
   onClose,
   onApprove,
   onRejectClick,
+  onDeleteClick,
   isApprover = true,
 }) => {
   if (!request) return null;
@@ -56,25 +43,52 @@ const ApprovalDetailsModal: React.FC<Props> = ({
       <Button buttonType="secondary" buttonSize="M" onClick={onClose}>
         Close
       </Button>
-      {isApprover && request.status === 'PENDING' && (
+      {request.status === 'PENDING' && (
         <>
-          <Button
-            buttonType="danger"
-            buttonSize="M"
-            onClick={() => {
-              onClose();
-              onRejectClick(request);
-            }}
-          >
-            Reject
-          </Button>
-          <Button
-            buttonType="primary"
-            buttonSize="M"
-            onClick={() => onApprove(request.id)}
-          >
-            Approve & Execute
-          </Button>
+          {isApprover ? (
+            <>
+              <Button
+                buttonType="danger"
+                buttonSize="M"
+                onClick={() => {
+                  onClose();
+                  onRejectClick(request);
+                }}
+              >
+                Reject
+              </Button>
+              <Button
+                buttonType="primary"
+                buttonSize="M"
+                onClick={() => onApprove(request.id)}
+              >
+                Approve & Execute
+              </Button>
+            </>
+          ) : (
+            <>
+              {onDeleteClick && (
+                <Button
+                  buttonType="danger"
+                  buttonSize="M"
+                  onClick={() => {
+                    onClose();
+                    onDeleteClick(request);
+                  }}
+                >
+                  Delete Request
+                </Button>
+              )}
+              <Button
+                buttonType="primary"
+                buttonSize="M"
+                disabled
+                title="Only approver roles (Architect/Admin) can approve requests"
+              >
+                Approve & Execute
+              </Button>
+            </>
+          )}
         </>
       )}
     </div>
@@ -106,9 +120,9 @@ const ApprovalDetailsModal: React.FC<Props> = ({
           )}
           <S.InfoItem>
             <span>Status</span>
-            <span>
-              <Tag color={getTagColor(request.status)}>{request.status}</Tag>
-            </span>
+            <S.StatusBadge $status={request.status}>
+              {request.status}
+            </S.StatusBadge>
           </S.InfoItem>
           <S.InfoItem>
             <span>Requested By</span>

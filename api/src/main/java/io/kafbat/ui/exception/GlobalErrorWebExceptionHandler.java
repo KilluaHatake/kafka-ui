@@ -75,9 +75,20 @@ public class GlobalErrorWebExceptionHandler extends AbstractErrorWebExceptionHan
   }
 
   private Mono<ServerResponse> renderDefault(Throwable throwable, ServerRequest request) {
+    Throwable root = Throwables.getRootCause(throwable);
+    String rootMessage = root.getMessage();
+    String detailedMessage;
+    if (rootMessage != null && !rootMessage.isBlank()) {
+      detailedMessage = root.getClass().getSimpleName() + ": " + rootMessage;
+    } else if (throwable.getMessage() != null && !throwable.getMessage().isBlank()) {
+      detailedMessage = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
+    } else {
+      detailedMessage = root.getClass().getSimpleName();
+    }
+
     var response = new ErrorResponseDTO()
         .code(ErrorCode.UNEXPECTED.code())
-        .message(coalesce(throwable.getMessage(), "Unexpected internal error"))
+        .message(detailedMessage)
         .requestId(requestId(request))
         .timestamp(currentTimestamp())
         .stackTrace(formatStacktrace(throwable));

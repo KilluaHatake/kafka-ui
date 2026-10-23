@@ -13,6 +13,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -76,6 +77,31 @@ public class ApprovalController extends AbstractController {
         .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
         .flatMap(user -> approvalService.rejectRequest(cluster, id, user, reason))
         .map(ResponseEntity::ok);
+  }
+
+  @GetMapping("/api/clusters/{clusterName}/approvals/permissions")
+  public Mono<ResponseEntity<Map<String, Object>>> getPermissions(@PathVariable String clusterName) {
+    return AccessControlService.getUser()
+        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+        .map(user -> {
+          Map<String, Object> perms = new java.util.HashMap<>();
+          perms.put("username", user.principal());
+          perms.put("roles", user.groups() != null ? user.groups() : java.util.List.of());
+          perms.put("canApprove", approvalService.isApprover(user));
+          return ResponseEntity.ok(perms);
+        });
+  }
+
+  @DeleteMapping("/api/clusters/{clusterName}/approvals/{id}")
+  public Mono<ResponseEntity<Void>> deleteApproval(
+      @PathVariable String clusterName,
+      @PathVariable String id
+  ) {
+    var cluster = getCluster(clusterName);
+    return AccessControlService.getUser()
+        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+        .flatMap(user -> approvalService.deleteRequest(cluster, id, user))
+        .thenReturn(ResponseEntity.noContent().build());
   }
 
   @GetMapping("/api/admin/approval-settings")

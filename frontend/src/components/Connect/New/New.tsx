@@ -11,6 +11,7 @@ import {
   ClusterNameRoute,
 } from 'lib/paths';
 import { showAlert } from 'lib/errorHandling';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 import yup from 'lib/yupExtended';
 import Editor from 'components/common/Editor/Editor';
 import Select from 'components/common/Select/Select';
@@ -183,7 +184,7 @@ const New: React.FC = () => {
         'connector.class': selectedPlugin || baseConfig['connector.class'],
       };
 
-      const connector = await mutation.createResource({
+      const connector: any = await mutation.createResource({
         connectName: values.connectName || selectedConnect,
         newConnector: {
           name: values.name,
@@ -191,7 +192,18 @@ const New: React.FC = () => {
         },
       });
 
-      if (connector) {
+      if (
+        handleApprovalRedirect(
+          connector,
+          clusterName,
+          navigate,
+          'Connector creation request submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
+
+      if (connector?.connect && connector?.name) {
         navigate(
           clusterConnectConnectorPath(
             clusterName,
@@ -202,16 +214,14 @@ const New: React.FC = () => {
       }
     } catch (e: any) {
       if (
-        e?.status === 202 ||
-        (e?.message && e.message.toLowerCase().includes('approval'))
+        handleApprovalRedirect(
+          e,
+          clusterName,
+          navigate,
+          'Connector creation request submitted to approval queue.'
+        )
       ) {
-        showAlert('warning', {
-          title: 'Approval Required',
-          message:
-            e.message ||
-            'Connector creation request submitted to approval queue.',
-        });
-        navigate(clusterApprovalsPath(clusterName));
+        return;
       }
     }
   };

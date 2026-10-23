@@ -7,6 +7,8 @@ import {
   useApprovals,
   useApproveRequest,
   useRejectRequest,
+  useDeleteApproval,
+  useApprovalPermissions,
   useApprovalSettings,
   ApprovalRequest,
 } from 'lib/hooks/api/approvals';
@@ -15,6 +17,8 @@ jest.mock('lib/hooks/api/approvals', () => ({
   useApprovals: jest.fn(),
   useApproveRequest: jest.fn(),
   useRejectRequest: jest.fn(),
+  useDeleteApproval: jest.fn(() => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false })),
+  useApprovalPermissions: jest.fn(() => ({ data: { username: 'test-user', roles: ['Architect'], canApprove: true } })),
   useApprovalSettings: jest.fn(),
   useUpdateApprovalSettings: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
 }));
@@ -73,6 +77,17 @@ describe('Approvals Page', () => {
     (useRejectRequest as jest.Mock).mockReturnValue({
       mutate: mockRejectMutate,
       isPending: false,
+    });
+
+    (useDeleteApproval as jest.Mock).mockReturnValue({
+      mutate: jest.fn(),
+      mutateAsync: jest.fn(),
+      isPending: false,
+    });
+
+    (useApprovalPermissions as jest.Mock).mockReturnValue({
+      data: { username: 'test-user', roles: ['Architect'], canApprove: true },
+      isLoading: false,
     });
 
     (useApprovalSettings as jest.Mock).mockReturnValue({
@@ -151,5 +166,23 @@ describe('Approvals Page', () => {
       { id: 'req-1', reason: 'Invalid topic cleanup policy' },
       expect.any(Object)
     );
+  });
+
+  it('disables Approve and shows Delete button for developer role', () => {
+    (useApprovalPermissions as jest.Mock).mockReturnValue({
+      data: { username: 'dev-user', roles: ['developer'], canApprove: false },
+      isLoading: false,
+    });
+
+    renderComponent();
+
+    // Approve button should be disabled for developer
+    const approveBtn = screen.getByText('Approve').closest('button');
+    expect(approveBtn).toBeDisabled();
+
+    // Instead of Reject, Delete button should be displayed
+    expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
+    const deleteBtn = screen.getByRole('button', { name: 'Delete' });
+    expect(deleteBtn).toBeInTheDocument();
   });
 });

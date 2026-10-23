@@ -1,6 +1,8 @@
 import React, { type FC, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ClusterBrokerParam } from 'lib/paths';
 import useAppParams from 'lib/hooks/useAppParams';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 import {
   useBrokerConfig,
   useUpdateBrokerConfigByName,
@@ -17,6 +19,7 @@ import * as S from './Configs.styled';
 
 const Configs: FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
   const { clusterName, brokerId } = useAppParams<ClusterBrokerParam>();
   const { data: configs = [] } = useBrokerConfig(clusterName, Number(brokerId));
   const updateBrokerConfigByName = useUpdateBrokerConfigByName(
@@ -32,8 +35,27 @@ const Configs: FC = () => {
   const onUpdateInputCell = async (
     name: BrokerConfig['name'],
     value: BrokerConfig['value']
-  ) =>
-    updateBrokerConfigByName.mutateAsync({ name, brokerConfigItem: { value } });
+  ) => {
+    try {
+      const res: any = await updateBrokerConfigByName.mutateAsync({
+        name,
+        brokerConfigItem: { value },
+      });
+      handleApprovalRedirect(
+        res,
+        clusterName,
+        navigate,
+        'Broker configuration update submitted to approval queue.'
+      );
+    } catch (e: any) {
+      handleApprovalRedirect(
+        e,
+        clusterName,
+        navigate,
+        'Broker configuration update submitted to approval queue.'
+      );
+    }
+  };
 
   const columns = useMemo(
     () => getBrokerConfigsTableColumns(onUpdateInputCell),

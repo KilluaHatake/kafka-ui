@@ -76,27 +76,58 @@ export const showSuccessAlert = (options: AlertOptions) => {
 };
 
 export const showServerError = async (
-  response: Response,
+  response: Response | ServerResponse | Error | unknown,
   options?: AlertOptions
 ) => {
-  let body: Record<string, string> = {};
-  try {
-    body = await response.json();
-  } catch {
-    // do nothing;
+  let body: Record<string, any> = {};
+  const resp = response as any;
+
+  if (resp && typeof resp.json === 'function') {
+    try {
+      const cloned = typeof resp.clone === 'function' ? resp.clone() : resp;
+      body = await cloned.json();
+    } catch {
+      // do nothing
+    }
   }
-  if (response.status) {
+
+  const status = resp?.status || body?.status;
+  const statusText = resp?.statusText || '';
+  const message =
+    body?.message ||
+    resp?.message ||
+    resp?.error ||
+    (response instanceof Error ? response.message : '') ||
+    'An error occurred';
+
+  // Check if this was an approval required notification
+  if (
+    status === 202 ||
+    body?.code === 4022 ||
+    resp?.code === 4022 ||
+    (typeof message === 'string' && message.toLowerCase().includes('approval'))
+  ) {
+    showAlert('warning', {
+      id: resp?.url || 'approval-sent',
+      title: 'Sent for Approval',
+      message: message || 'Your change request has been submitted for approval.',
+      ...options,
+    });
+    return;
+  }
+
+  if (status) {
     showAlert('error', {
-      id: response.url,
-      title: `${response.status} ${response.statusText}`,
-      message: body?.message || 'An error occurred',
+      id: resp?.url,
+      title: `${status} ${statusText}`.trim(),
+      message,
       ...options,
     });
   } else {
     showAlert('error', {
       id: 'server-error',
       title: `Something went wrong`,
-      message: 'An error occurred',
+      message,
       ...options,
     });
   }

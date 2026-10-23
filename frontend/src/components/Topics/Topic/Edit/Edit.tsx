@@ -19,6 +19,7 @@ import {
 import DangerZone from 'components/Topics/Topic/Edit/DangerZone/DangerZone';
 import { ConfigSource } from 'generated-sources';
 import { TopicConfigByName, TopicFormData } from 'lib/interfaces/topic';
+import { handleApprovalRedirect } from 'lib/hooks/api/approvals';
 import { showAlert } from 'lib/errorHandling';
 
 export const TOPIC_EDIT_FORM_DEFAULT_PROPS = {
@@ -78,20 +79,28 @@ const Edit: React.FC = () => {
 
     const newData = Object.fromEntries(filteredDirtyDefaultEntries);
     try {
-      await updateTopic.mutateAsync(newData);
+      const res: any = await updateTopic.mutateAsync(newData);
+      if (
+        handleApprovalRedirect(
+          res,
+          clusterName,
+          navigate,
+          'Topic configuration update submitted to approval queue.'
+        )
+      ) {
+        return;
+      }
       navigate('../');
     } catch (e: any) {
       if (
-        e?.status === 202 ||
-        (e?.message && e.message.toLowerCase().includes('approval'))
+        handleApprovalRedirect(
+          e,
+          clusterName,
+          navigate,
+          'Topic configuration update submitted to approval queue.'
+        )
       ) {
-        showAlert('warning', {
-          title: 'Approval Required',
-          message:
-            e.message ||
-            'Topic configuration update submitted to approval queue.',
-        });
-        navigate(clusterApprovalsPath(clusterName));
+        return;
       }
     }
   };
