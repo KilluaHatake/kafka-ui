@@ -140,7 +140,8 @@ Please refer to our [configuration](https://ui.docs.kafbat.io/configuration/conf
 
 ## Building from sources
 
-[Quick start](https://ui.docs.kafbat.io/development/building/prerequisites) for building from source
+- For general instructions on building from source, see the [quick start guide](https://ui.docs.kafbat.io/development/building/prerequisites).
+- For step-by-step instructions on compiling and packaging your own **custom Docker image**, see [BUILDING_DOCKER.md](./BUILDING_DOCKER.md).
 
 ## Liveliness and readiness probes
 The liveness and readiness endpoint is at `/actuator/health`.<br/>
