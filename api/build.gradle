@@ -39,6 +39,7 @@ dependencies {
     implementation project(":contract")
     implementation project(":serde-api")
     implementation libs.spring.starter.webflux
+    implementation libs.spring.starter.mail
     implementation libs.spring.starter.security
     implementation libs.spring.starter.actuator
     implementation libs.spring.starter.logging
