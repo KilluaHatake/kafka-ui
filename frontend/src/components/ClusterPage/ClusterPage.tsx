@@ -15,6 +15,7 @@ import {
   kafkaConnectRelativePath,
   clusterConnectorNewRelativePath,
   clusterConnectConnectorRelativePath,
+  clusterApprovalsRelativePath,
 } from 'lib/paths';
 import ClusterContext from 'components/contexts/ClusterContext';
 import PageLoader from 'components/common/PageLoader/PageLoader';
@@ -37,6 +38,7 @@ const ConsumerGroups = React.lazy(
   () => import('components/ConsumerGroups/ConsumerGroups')
 );
 const AclPage = React.lazy(() => import('components/ACLPage/ACLPage'));
+const Approvals = React.lazy(() => import('components/Approvals/Approvals'));
 
 const ClusterPage: React.FC = () => {
   const { clusterName } = useAppParams<ClusterNameRoute>();
@@ -129,6 +131,10 @@ const ClusterPage: React.FC = () => {
                 element={<AclPage />}
               />
             )}
+            <Route
+              path={getNonExactPath(clusterApprovalsRelativePath)}
+              element={<Approvals />}
+            />
             {appInfo.hasDynamicConfig && (
               <Route
                 path={getNonExactPath(clusterConfigRelativePath)}

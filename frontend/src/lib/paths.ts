@@ -334,3 +334,10 @@ export const clusterAclNewRelativePath = 'create-new-acl';
 export const clusterACLPath = (
   clusterName: ClusterName = RouteParams.clusterName
 ) => `${clusterPath(clusterName)}/${clusterAclRelativePath}`;
+
+// Approvals
+export const clusterApprovalsRelativePath = 'approvals';
+export const clusterApprovalsPath = (
+  clusterName: ClusterName = RouteParams.clusterName
+) => `${clusterPath(clusterName)}/${clusterApprovalsRelativePath}`;
+

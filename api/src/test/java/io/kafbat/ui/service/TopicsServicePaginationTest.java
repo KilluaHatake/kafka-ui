@@ -25,6 +25,7 @@ import io.kafbat.ui.model.TopicColumnsToSortDTO;
 import io.kafbat.ui.model.TopicDTO;
 import io.kafbat.ui.service.acl.AclsService;
 import io.kafbat.ui.service.analyze.TopicAnalysisService;
+import io.kafbat.ui.service.approval.ApprovalService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.rbac.AccessControlService;
 import io.kafbat.ui.util.AccessControlServiceMock;
@@ -74,7 +75,8 @@ class TopicsServicePaginationTest {
           clusterMapper,
           clustersProperties,
           kafkaConnectService,
-          aclService
+          aclService,
+          mock(ApprovalService.class)
       );
 
   private void init(Map<String, InternalTopic> topicsInCache) {

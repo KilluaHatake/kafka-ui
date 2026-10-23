@@ -48,17 +48,18 @@ public class CognitoAuthorityExtractor implements ProviderAuthorityExtractor {
   }
 
   private Set<String> extractUsernameRoles(AccessControlService acs, DefaultOAuth2User principal) {
+    String email = principal.getAttribute("email");
     Set<String> rolesByUsername = acs.getRoles()
         .stream()
         .filter(r -> r.getSubjects()
             .stream()
             .filter(s -> s.getProvider().equals(Provider.OAUTH_COGNITO))
-            .filter(s -> s.getType().equals("user"))
-            .anyMatch(s -> s.matches(principal.getName())))
+            .filter(s -> "user".equalsIgnoreCase(s.getType()) || "email".equalsIgnoreCase(s.getType()))
+            .anyMatch(s -> s.matches(principal.getName()) || (email != null && s.matches(email))))
         .map(Role::getName)
         .collect(Collectors.toSet());
 
-    log.debug("Matched user roles: [{}]", String.join(", ", rolesByUsername));
+    log.debug("Matched user/email roles: [{}]", String.join(", ", rolesByUsername));
 
     return rolesByUsername;
   }
@@ -68,7 +69,8 @@ public class CognitoAuthorityExtractor implements ProviderAuthorityExtractor {
     var provider = (OAuthProperties.OAuth2Provider) additionalParams.get("provider");
     Assert.notNull(provider, "provider is null");
 
-    var rolesFieldName = Optional.ofNullable(provider.getCustomParams().get(ROLES_FIELD_PARAM_NAME))
+    var rolesFieldName = Optional.ofNullable(provider.getCustomParams())
+        .map(params -> params.get(ROLES_FIELD_PARAM_NAME))
         .orElse(COGNITO_GROUPS_ATTRIBUTE_NAME);
 
     List<String> groups = principal.getAttribute(rolesFieldName);
