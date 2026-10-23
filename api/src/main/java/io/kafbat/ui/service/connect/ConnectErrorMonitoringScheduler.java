@@ -13,7 +13,6 @@ import io.kafbat.ui.service.notification.FailureKey;
 import io.kafbat.ui.service.notification.FailureThrottlingTracker;
 import io.kafbat.ui.service.notification.NotificationService;
 import java.time.Instant;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,7 +59,7 @@ public class ConnectErrorMonitoringScheduler {
       return Mono.empty();
     }
 
-    Set<FailureKey> activeFailuresForCluster = new HashSet<>();
+    Set<FailureKey> activeFailuresForCluster = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     return Flux.fromIterable(connectClusters)
         .flatMap(connect -> checkConnectInstance(cluster, connect.getName(), activeFailuresForCluster))

@@ -44,6 +44,15 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
   onChange,
   disabled = false,
 }) => {
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  const toggleSecret = (key: string) => {
+    setShowSecrets((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   // Group configs by group name
   const groupedConfigs = React.useMemo(() => {
     const groups: Record<string, ConnectorPluginConfigItem[]> = {};
@@ -102,16 +111,25 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
         </S.LabelRow>
 
         {isPassword ? (
-          <Input
-            inputSize="M"
-            type="password"
-            name={key}
-            autoComplete="new-password"
-            placeholder={def.defaultValue ? `Default: ${def.defaultValue}` : 'Enter password / secret'}
-            value={String(currentValue)}
-            disabled={disabled}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(key, e.target.value)}
-          />
+          <S.PasswordWrapper>
+            <Input
+              inputSize="M"
+              type={showSecrets[key] ? 'text' : 'password'}
+              name={key}
+              autoComplete="new-password"
+              placeholder={def.defaultValue ? `Default: ${def.defaultValue}` : 'Enter password / secret'}
+              value={String(currentValue)}
+              disabled={disabled}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(key, e.target.value)}
+            />
+            <S.PasswordToggleBtn
+              type="button"
+              aria-label={showSecrets[key] ? 'Hide password' : 'Show password'}
+              onClick={() => toggleSecret(key)}
+            >
+              {showSecrets[key] ? 'Hide' : 'Show'}
+            </S.PasswordToggleBtn>
+          </S.PasswordWrapper>
         ) : type === 'BOOLEAN' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Switch
@@ -137,6 +155,16 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
               const val = e.target.value;
               onChange(key, val === '' ? '' : Number(val));
             }}
+          />
+        ) : type === 'LIST' ? (
+          <Input
+            inputSize="M"
+            type="text"
+            name={key}
+            placeholder={def.defaultValue ? `Default: ${def.defaultValue}` : 'Comma-separated values (e.g. val1, val2)'}
+            value={String(currentValue)}
+            disabled={disabled}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(key, e.target.value)}
           />
         ) : recommended.length > 0 ? (
           <Select

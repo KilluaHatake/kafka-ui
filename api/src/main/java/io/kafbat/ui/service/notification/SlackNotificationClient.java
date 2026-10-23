@@ -75,7 +75,7 @@ public class SlackNotificationClient {
     blocks.add(Map.of("type", "section", "fields", fields));
 
     // Error trace block
-    String trace = payload.getTruncatedTrace(MAX_TRACE_LENGTH);
+    String trace = payload.getTruncatedTrace(MAX_TRACE_LENGTH).replace("```", "'''");
     blocks.add(Map.of(
         "type", "section",
         "text", Map.of(

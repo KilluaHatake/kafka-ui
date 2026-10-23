@@ -1,18 +1,21 @@
 package io.kafbat.ui.config;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
-@Configuration
+@Component
 @ConfigurationProperties("kafka.approval")
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ApprovalProperties {
 
   public static final String DEFAULT_APPROVAL_TOPIC = "__kui-approval-requests";
 
+  private boolean enabled = true;
   private String topic = DEFAULT_APPROVAL_TOPIC;
   private int partitions = 1;
   private boolean requireTopicCreation = false;

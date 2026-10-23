@@ -3,6 +3,7 @@ package io.kafbat.ui.controller;
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
 import io.kafbat.ui.model.approval.ApprovalRequest;
+import io.kafbat.ui.model.approval.ApprovalSettingsDto;
 import io.kafbat.ui.model.approval.ApprovalStatus;
 import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.service.approval.ApprovalService;
@@ -78,23 +79,26 @@ public class ApprovalController extends AbstractController {
   }
 
   @GetMapping("/api/admin/approval-settings")
-  public Mono<ResponseEntity<ApprovalProperties>> getApprovalSettings() {
-    return Mono.just(ResponseEntity.ok(approvalProperties));
+  public Mono<ResponseEntity<ApprovalSettingsDto>> getApprovalSettings() {
+    return Mono.just(ResponseEntity.ok(ApprovalSettingsDto.fromProperties(approvalProperties)));
   }
 
   @PutMapping("/api/admin/approval-settings")
-  public Mono<ResponseEntity<ApprovalProperties>> updateApprovalSettings(
-      @RequestBody ApprovalProperties newSettings
+  public Mono<ResponseEntity<ApprovalSettingsDto>> updateApprovalSettings(
+      @RequestBody ApprovalSettingsDto newSettings
   ) {
-    approvalProperties.setRequireTopicCreation(newSettings.isRequireTopicCreation());
-    approvalProperties.setRequireTopicConfigUpdates(newSettings.isRequireTopicConfigUpdates());
-    approvalProperties.setRequireConnectorDeployments(newSettings.isRequireConnectorDeployments());
-    if (newSettings.getDirectApplyRoles() != null) {
-      approvalProperties.setDirectApplyRoles(newSettings.getDirectApplyRoles());
+    if (newSettings != null) {
+      approvalProperties.setEnabled(newSettings.isEnabled());
+      approvalProperties.setRequireTopicCreation(newSettings.isRequireTopicCreation());
+      approvalProperties.setRequireTopicConfigUpdates(newSettings.isRequireTopicConfigUpdates());
+      approvalProperties.setRequireConnectorDeployments(newSettings.isRequireConnectorDeployments());
+      if (newSettings.getDirectApplyRoles() != null) {
+        approvalProperties.setDirectApplyRoles(newSettings.getDirectApplyRoles());
+      }
+      if (newSettings.getApproverRoles() != null) {
+        approvalProperties.setApproverRoles(newSettings.getApproverRoles());
+      }
     }
-    if (newSettings.getApproverRoles() != null) {
-      approvalProperties.setApproverRoles(newSettings.getApproverRoles());
-    }
-    return Mono.just(ResponseEntity.ok(approvalProperties));
+    return Mono.just(ResponseEntity.ok(ApprovalSettingsDto.fromProperties(approvalProperties)));
   }
 }

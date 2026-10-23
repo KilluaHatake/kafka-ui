@@ -16,7 +16,7 @@ jest.mock('lib/hooks/api/approvals', () => ({
   useApproveRequest: jest.fn(),
   useRejectRequest: jest.fn(),
   useApprovalSettings: jest.fn(),
-  useUpdateApprovalSettings: jest.fn(() => ({ mutate: jest.fn() })),
+  useUpdateApprovalSettings: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
 }));
 
 jest.mock('components/common/DiffViewer/DiffViewer', () => () => (

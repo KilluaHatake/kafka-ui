@@ -49,7 +49,7 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
         buttonType="primary"
         buttonSize="M"
         onClick={handleSave}
-        inProgress={updateSettings.isPending}
+        inProgress={updateSettings?.isPending}
       >
         Save Settings
       </Button>

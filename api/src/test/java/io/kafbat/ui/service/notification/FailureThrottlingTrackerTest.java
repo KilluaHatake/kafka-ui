@@ -2,8 +2,6 @@ package io.kafbat.ui.service.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

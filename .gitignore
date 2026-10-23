@@ -44,10 +44,12 @@ build/
 /docker/*.override.yaml
 out/
 node_modules/
+.pnpm-store/
 .gradle
 /e2e-tests/allure-results/
 out/
 node_modules/
+.pnpm-store/
 .gradle
 @rerun.txt
 test-results

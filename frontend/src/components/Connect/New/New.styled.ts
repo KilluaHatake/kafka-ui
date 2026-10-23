@@ -42,7 +42,7 @@ export const ModeButton = styled.button<{ $active: boolean }>`
   background-color: ${({ $active, theme }) =>
     $active ? theme.button.primary.backgroundColor.normal : theme.select.backgroundColor.normal};
   color: ${({ $active, theme }) =>
-    $active ? theme.button.primary.color.normal : theme.heading.color.normal};
+    $active ? theme.button.primary.color.normal : theme.heading.base.color};
   transition: background-color 0.15s ease-in-out;
 
   &:hover {
@@ -67,7 +67,7 @@ export const GroupHeader = styled.div`
   align-items: center;
   font-weight: 600;
   font-size: 14px;
-  color: ${({ theme }) => theme.heading.color.normal};
+  color: ${({ theme }) => theme.heading.base.color};
   user-select: none;
 
   &:hover {
@@ -94,7 +94,7 @@ export const LabelRow = styled.div`
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: ${({ theme }) => theme.heading.color.normal};
+  color: ${({ theme }) => theme.heading.base.color};
 `;
 
 export const RequiredMark = styled.span`
@@ -119,4 +119,37 @@ export const InfoBadge = styled.span`
   background-color: ${({ theme }) => theme.table.th.backgroundColor.normal};
   color: ${({ theme }) => theme.table.th.color.normal};
   cursor: help;
+`;
+
+export const PasswordWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+
+  & > div {
+    width: 100%;
+  }
+
+  & input {
+    padding-right: 50px;
+  }
+`;
+
+export const PasswordToggleBtn = styled.button`
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  color: ${({ theme }) => theme.table.th.color.normal};
+  padding: 4px 6px;
+  border-radius: 4px;
+  user-select: none;
+
+  &:hover {
+    opacity: 0.75;
+  }
 `;

@@ -23,7 +23,6 @@ import io.kafbat.ui.service.notification.FailureThrottlingTracker;
 import io.kafbat.ui.service.notification.NotificationService;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

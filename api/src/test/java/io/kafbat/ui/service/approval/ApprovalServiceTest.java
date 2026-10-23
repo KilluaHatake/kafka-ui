@@ -1,7 +1,6 @@
 package io.kafbat.ui.service.approval;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -23,10 +22,8 @@ import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;

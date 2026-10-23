@@ -196,10 +196,13 @@ const New: React.FC = () => {
     label: connectName,
   }));
 
-  const pluginOptions = plugins.map((plugin) => ({
-    value: plugin.class || '',
-    label: plugin.class || '',
-  }));
+  const pluginOptions = plugins.map((plugin) => {
+    const className = plugin._class || (plugin as any).class || '';
+    return {
+      value: className,
+      label: className,
+    };
+  });
 
   return (
     <FormProvider {...methods}>

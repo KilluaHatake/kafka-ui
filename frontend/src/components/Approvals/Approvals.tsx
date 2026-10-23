@@ -214,7 +214,7 @@ const Approvals: React.FC = () => {
                               buttonType="primary"
                               buttonSize="S"
                               onClick={() => handleApprove(req.id)}
-                              inProgress={approveMutation.isPending}
+                              inProgress={approveMutation?.isPending}
                             >
                               Approve
                             </Button>
@@ -222,7 +222,7 @@ const Approvals: React.FC = () => {
                               buttonType="danger"
                               buttonSize="S"
                               onClick={() => handleRejectClick(req)}
-                              inProgress={rejectMutation.isPending}
+                              inProgress={rejectMutation?.isPending}
                             >
                               Reject
                             </Button>

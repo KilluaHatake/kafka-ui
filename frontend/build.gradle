@@ -35,8 +35,15 @@ tasks.register('buildFrontend', PnpmTask) {
   inputs.files(fileTree("src/"))
   outputs.dir(project.layout.buildDirectory.dir("vite/static"))
   args = ['build']
+  def gitCommit = System.getenv("VITE_COMMIT") ?: {
+    try {
+      return "git rev-parse --short HEAD".execute().text.trim()
+    } catch (Exception ignored) {
+      return "dev"
+    }
+  }()
   environment = System.getenv() + [
     "VITE_TAG"   : project.version,
-    "VITE_COMMIT": "git rev-parse --short HEAD".execute().text.trim()
+    "VITE_COMMIT": gitCommit
   ]
 }

@@ -4,7 +4,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
-import io.kafbat.ui.exception.CustomBaseException;
 import io.kafbat.ui.exception.NotFoundException;
 import io.kafbat.ui.exception.ValidationException;
 import io.kafbat.ui.model.ConnectorActionDTO;
@@ -20,10 +19,10 @@ import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.MessagesService;
-import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
+import io.kafbat.ui.util.KafkaClientSslPropertiesUtil;
 import jakarta.annotation.PostConstruct;
 import java.io.Closeable;
 import java.time.Duration;
@@ -31,16 +30,22 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -72,6 +77,10 @@ public class ApprovalService implements Closeable {
   }
 
   public boolean isApprovalRequired(ApprovalTargetType type, AuthenticatedUser user) {
+    if (!approvalProperties.isEnabled()) {
+      return false;
+    }
+
     boolean gated = switch (type) {
       case TOPIC_CREATE -> approvalProperties.isRequireTopicCreation();
       case TOPIC_CONFIG_UPDATE -> approvalProperties.isRequireTopicConfigUpdates();
@@ -145,7 +154,8 @@ public class ApprovalService implements Closeable {
   public Mono<ApprovalRequest> getRequest(String clusterName, String id) {
     Map<String, ApprovalRequest> clusterMap = requestsCache.get(clusterName);
     if (clusterMap == null || !clusterMap.containsKey(id)) {
-      return Mono.error(new NotFoundException("Approval request %s not found in cluster %s".formatted(id, clusterName)));
+      return Mono.error(new NotFoundException(
+          "Approval request %s not found in cluster %s".formatted(id, clusterName)));
     }
     return Mono.just(clusterMap.get(id));
   }
@@ -161,7 +171,8 @@ public class ApprovalService implements Closeable {
 
     return getRequest(cluster.getName(), id).flatMap(request -> {
       if (request.getStatus() != ApprovalStatus.PENDING) {
-        return Mono.error(new ValidationException("Only PENDING requests can be approved. Current status: " + request.getStatus()));
+        return Mono.error(new ValidationException(
+            "Only PENDING requests can be approved. Current status: " + request.getStatus()));
       }
 
       return executeApprovedAction(cluster, request)
@@ -171,7 +182,8 @@ public class ApprovalService implements Closeable {
             request.setApproverEmail(approver.principal());
             request.setUpdatedAt(now);
 
-            requestsCache.computeIfAbsent(cluster.getName(), k -> new ConcurrentHashMap<>()).put(request.getId(), request);
+            requestsCache.computeIfAbsent(cluster.getName(), k -> new ConcurrentHashMap<>())
+                .put(request.getId(), request);
             writeRecordToTopic(cluster.getName(), request);
 
             auditService.sendAuditRecord(
@@ -283,14 +295,16 @@ public class ApprovalService implements Closeable {
         yield kafkaConnectService.createConnector(cluster, request.getConnectName(), Mono.just(dto)).then();
       }
       case CONNECTOR_UPDATE ->
-          kafkaConnectService.setConnectorConfig(cluster, request.getConnectName(), request.getTargetName(), Mono.just(request.getNewConfig())).then();
+          kafkaConnectService.setConnectorConfig(
+              cluster, request.getConnectName(), request.getTargetName(), Mono.just(request.getNewConfig())).then();
       case CONNECTOR_ACTION -> {
         String actionStr = request.getMetadata() != null ? (String) request.getMetadata().get("action") : null;
         ConnectorActionDTO action = actionStr != null ? ConnectorActionDTO.fromValue(actionStr) : null;
         if (action == null) {
           yield Mono.error(new ValidationException("Missing connector action in approval request metadata"));
         }
-        yield kafkaConnectService.updateConnectorState(cluster, request.getConnectName(), request.getTargetName(), action);
+        yield kafkaConnectService.updateConnectorState(
+            cluster, request.getConnectName(), request.getTargetName(), action);
       }
     };
   }
@@ -302,15 +316,20 @@ public class ApprovalService implements Closeable {
           .flatMap(ac -> ac.describeTopic(topicName)
               .onErrorResume(th -> {
                 log.info("Creating approval topic '{}' for cluster '{}'", topicName, cluster.getName());
-                Map<String, String> topicConfig = Map.of(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+                Map<String, String> topicConfig =
+                    Map.of(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
                 return ac.createTopic(topicName, approvalProperties.getPartitions(), null, topicConfig)
                     .then(Mono.empty());
               })
           )
           .timeout(Duration.ofSeconds(10))
           .subscribe(
-              s -> log.debug("Approval topic checked for cluster '{}'", cluster.getName()),
-              th -> log.warn("Could not check/create approval topic '{}' for cluster '{}'", topicName, cluster.getName(), th)
+              s -> {
+                log.debug("Approval topic checked for cluster '{}'", cluster.getName());
+                replayRequestsFromTopic(cluster);
+              },
+              th -> log.warn("Could not check/create approval topic '{}' for cluster '{}'",
+                  topicName, cluster.getName(), th)
           );
 
       var producer = MessagesService.createProducer(cluster, Map.of());
@@ -320,8 +339,81 @@ public class ApprovalService implements Closeable {
     }
   }
 
+  public void replayRequestsFromTopic(KafkaCluster cluster) {
+    String topicName = approvalProperties.getTopic();
+    try (var consumer = createConsumer(cluster)) {
+      var partitionInfos = consumer.partitionsFor(topicName, Duration.ofSeconds(5));
+      if (partitionInfos == null || partitionInfos.isEmpty()) {
+        return;
+      }
+      List<TopicPartition> partitions = partitionInfos.stream()
+          .map(pi -> new TopicPartition(pi.topic(), pi.partition()))
+          .toList();
+      consumer.assign(partitions);
+      consumer.seekToBeginning(partitions);
+      Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions, Duration.ofSeconds(5));
+
+      boolean allEmpty = partitions.stream().allMatch(tp -> {
+        Long end = endOffsets.get(tp);
+        return end == null || end == 0L;
+      });
+
+      if (allEmpty) {
+        log.debug("Approval topic '{}' on cluster '{}' is empty, nothing to replay", topicName, cluster.getName());
+        return;
+      }
+
+      int count = 0;
+      long startTime = System.currentTimeMillis();
+      while (System.currentTimeMillis() - startTime < 10000) {
+        var records = consumer.poll(Duration.ofMillis(500));
+        for (var record : records) {
+          if (record.value() != null) {
+            try {
+              ApprovalRequest request = ApprovalRequest.fromJson(new String(record.value(), UTF_8));
+              requestsCache.computeIfAbsent(cluster.getName(), k -> new ConcurrentHashMap<>())
+                  .put(request.getId(), request);
+              count++;
+            } catch (Exception ex) {
+              log.warn("Failed to deserialize approval record at offset {} in {}",
+                  record.offset(), record.partition(), ex);
+            }
+          }
+        }
+        boolean finished = partitions.stream()
+            .allMatch(tp -> consumer.position(tp) >= endOffsets.getOrDefault(tp, 0L));
+        if (finished || records.isEmpty()) {
+          break;
+        }
+      }
+      log.info("Replayed {} approval requests from topic '{}' on cluster '{}'", count, topicName, cluster.getName());
+    } catch (Exception e) {
+      log.warn("Failed to replay approval requests from topic '{}' for cluster '{}'",
+          topicName, cluster.getName(), e);
+    }
+  }
+
+  public KafkaConsumer<byte[], byte[]> createConsumer(KafkaCluster cluster) {
+    Properties properties = new Properties();
+    KafkaClientSslPropertiesUtil.addKafkaSslProperties(cluster.getOriginalProperties().getSsl(), properties);
+    properties.putAll(cluster.getProperties());
+    properties.putAll(cluster.getConsumerProperties());
+    properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapServers());
+    properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    properties.put(ConsumerConfig.GROUP_ID_CONFIG, "kafbat-ui-approval-replay-" + UUID.randomUUID());
+    properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    properties.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "5000");
+    return new KafkaConsumer<>(properties);
+  }
+
   private void writeRecordToTopic(String clusterName, ApprovalRequest request) {
-    KafkaProducer<byte[], byte[]> producer = producers.get(clusterName);
+    KafkaProducer<byte[], byte[]> producer = producers.computeIfAbsent(clusterName, name ->
+        clustersStorage.getClusterByName(name)
+            .map(c -> MessagesService.createProducer(c, Map.of()))
+            .orElse(null)
+    );
     if (producer != null) {
       try {
         String json = request.toJson();

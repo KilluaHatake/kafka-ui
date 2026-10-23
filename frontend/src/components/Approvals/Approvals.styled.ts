@@ -14,7 +14,7 @@ export const Header = styled.div`
 export const Title = styled.h1`
   font-size: 20px;
   font-weight: 500;
-  color: ${({ theme }) => theme.heading.color.normal};
+  color: ${({ theme }) => theme.heading.base.color};
   margin: 0;
 `;
 
@@ -117,7 +117,7 @@ export const InfoGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  background-color: ${({ theme }) => theme.panelColor};
+  background-color: ${({ theme }) => theme.modal.backgroundColor};
   padding: 12px 16px;
   border-radius: 6px;
 `;
@@ -135,7 +135,7 @@ export const InfoItem = styled.div`
 
   span:last-child {
     font-size: 14px;
-    color: ${({ theme }) => theme.heading.color.normal};
+    color: ${({ theme }) => theme.heading.base.color};
     font-weight: 500;
   }
 `;
@@ -171,6 +171,6 @@ export const Textarea = styled.textarea`
   outline: none;
 
   &:focus {
-    border-color: ${({ theme }) => theme.input.borderColor.active};
+    border-color: ${({ theme }) => theme.input.borderColor.focus};
   }
 `;
