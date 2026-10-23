@@ -1,14 +1,19 @@
 import styled from 'styled-components';
 
 export const MessageTooltip = styled.div`
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 380px;
   background-color: ${({ theme }) => theme.tooltip.bg};
   color: ${({ theme }) => theme.tooltip.text};
   border-radius: 6px;
-  padding: 5px;
-  z-index: 1;
-  white-space: pre-wrap;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  z-index: 1000;
+  pointer-events: none;
 `;
 
 export const Wrapper = styled.div`

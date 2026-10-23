@@ -105,7 +105,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
           {def.documentation && (
             <Tooltip
               content={def.documentation}
-              value={<S.InfoBadge title={def.documentation}>?</S.InfoBadge>}
+              value={<S.InfoBadge>?</S.InfoBadge>}
             />
           )}
         </S.LabelRow>
