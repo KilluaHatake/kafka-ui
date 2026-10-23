@@ -2,6 +2,7 @@ import {
   Connect,
   Connector,
   ConnectorAction,
+  ConnectorPlugin,
   FullConnectorInfo,
   NewConnector,
   Task,
@@ -237,5 +238,38 @@ export function useResetConnectorOffsets(props: UseConnectorProps) {
     mutationFn: () => api.resetConnectorOffsets(props),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: connectorKey(props) }),
+  });
+}
+
+export function useConnectorPlugins(
+  clusterName: ClusterName,
+  connectName: Connect['name'],
+  options?: Omit<
+    UseQueryOptions<ConnectorPlugin[], ServerResponse>,
+    'queryKey' | 'queryFn'
+  >
+) {
+  return useQuery<ConnectorPlugin[], ServerResponse>({
+    queryKey: ['clusters', clusterName, 'connects', connectName, 'plugins'],
+    queryFn: () =>
+      apiFetch(() => api.getConnectorPlugins({ clusterName, connectName })),
+    enabled: Boolean(clusterName && connectName),
+    ...options,
+  });
+}
+
+export function useValidateConnectorPluginConfig(clusterName: ClusterName) {
+  return useMutation({
+    mutationFn: (props: {
+      connectName: string;
+      pluginName: string;
+      requestBody: Record<string, unknown>;
+    }) =>
+      api.validateConnectorPluginConfig({
+        clusterName,
+        connectName: props.connectName,
+        pluginName: props.pluginName,
+        requestBody: props.requestBody,
+      }),
   });
 }

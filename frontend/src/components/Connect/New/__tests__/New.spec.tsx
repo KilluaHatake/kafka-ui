@@ -9,7 +9,12 @@ import { connects, connector } from 'lib/fixtures/kafkaConnect';
 import { fireEvent, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ControllerRenderProps } from 'react-hook-form';
-import { useConnects, useCreateConnector } from 'lib/hooks/api/kafkaConnect';
+import {
+  useConnects,
+  useCreateConnector,
+  useConnectorPlugins,
+  useValidateConnectorPluginConfig,
+} from 'lib/hooks/api/kafkaConnect';
 
 jest.mock(
   'components/common/Editor/Editor',
@@ -27,6 +32,8 @@ jest.mock('react-router-dom', () => ({
 jest.mock('lib/hooks/api/kafkaConnect', () => ({
   useConnects: jest.fn(),
   useCreateConnector: jest.fn(),
+  useConnectorPlugins: jest.fn(),
+  useValidateConnectorPluginConfig: jest.fn(),
 }));
 
 describe('New', () => {
@@ -60,6 +67,13 @@ describe('New', () => {
   beforeEach(() => {
     (useConnects as jest.Mock).mockImplementation(() => ({
       data: connects,
+    }));
+    (useConnectorPlugins as jest.Mock).mockImplementation(() => ({
+      data: [],
+      isLoading: false,
+    }));
+    (useValidateConnectorPluginConfig as jest.Mock).mockImplementation(() => ({
+      mutateAsync: jest.fn().mockResolvedValue({ configs: [] }),
     }));
   });
 
