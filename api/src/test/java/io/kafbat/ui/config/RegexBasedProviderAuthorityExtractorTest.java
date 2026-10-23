@@ -279,4 +279,33 @@ public class RegexBasedProviderAuthorityExtractorTest {
 
   }
 
+  @Test
+  void extractCognitoAuthoritiesByEmail() {
+    Subject subject = new Subject();
+    subject.setProvider(Provider.OAUTH_COGNITO);
+    subject.setType("email");
+    subject.setValue("architect@company.com");
+
+    Role role = new Role();
+    role.setName("Architect");
+    role.setClusters(List.of("local"));
+    role.setSubjects(List.of(subject));
+
+    AccessControlService acs = new AccessControlServiceMock(List.of(role)).getMock();
+    ProviderAuthorityExtractor extractor = new CognitoAuthorityExtractor();
+
+    OAuth2User oauth2User = new DefaultOAuth2User(
+        AuthorityUtils.createAuthorityList("SCOPE_openid"),
+        Map.of("sub", "uuid-1234", "email", "architect@company.com"),
+        "sub");
+
+    HashMap<String, Object> additionalParams = new HashMap<>();
+    OAuthProperties.OAuth2Provider provider = new OAuthProperties.OAuth2Provider();
+    additionalParams.put("provider", provider);
+
+    Set<String> roles = extractor.extract(acs, oauth2User, additionalParams).block();
+    assertNotNull(roles);
+    assertTrue(roles.contains("Architect"));
+  }
+
 }

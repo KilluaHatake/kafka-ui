@@ -22,6 +22,7 @@ import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.acl.AclsService;
 import io.kafbat.ui.service.analyze.TopicAnalysisService;
+import io.kafbat.ui.service.approval.ApprovalService;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
 import io.modelcontextprotocol.server.McpServerFeatures.AsyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -54,7 +55,8 @@ class McpSpecificationGeneratorTest {
   private static TopicsController topicsController() {
     return new TopicsController(
         mock(TopicsService.class), mock(TopicAnalysisService.class), mock(ClusterMapper.class),
-        mock(ClustersProperties.class), mock(KafkaConnectService.class), mock(AclsService.class)
+        mock(ClustersProperties.class), mock(KafkaConnectService.class), mock(AclsService.class),
+        mock(ApprovalService.class)
     );
   }
 

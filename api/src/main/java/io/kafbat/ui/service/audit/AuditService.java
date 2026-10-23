@@ -244,11 +244,11 @@ public class AuditService implements Closeable {
     }
   }
 
-  private void sendAuditRecord(AccessContext ctx, AuthenticatedUser user) {
+  public void sendAuditRecord(AccessContext ctx, AuthenticatedUser user) {
     sendAuditRecord(ctx, user, null);
   }
 
-  private void sendAuditRecord(AccessContext ctx, AuthenticatedUser user, @Nullable Throwable th) {
+  public void sendAuditRecord(AccessContext ctx, AuthenticatedUser user, @Nullable Throwable th) {
     try {
       if (ctx.cluster() != null) {
         var writer = auditWriters.get(ctx.cluster());

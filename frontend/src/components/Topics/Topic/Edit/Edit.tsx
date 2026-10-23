@@ -1,7 +1,7 @@
 import React from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import TopicForm from 'components/Topics/shared/Form/TopicForm';
-import { RouteParamsClusterTopic } from 'lib/paths';
+import { RouteParamsClusterTopic, clusterApprovalsPath } from 'lib/paths';
 import { useNavigate } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { topicFormValidationSchema } from 'lib/yupExtended';
@@ -19,6 +19,7 @@ import {
 import DangerZone from 'components/Topics/Topic/Edit/DangerZone/DangerZone';
 import { ConfigSource } from 'generated-sources';
 import { TopicConfigByName, TopicFormData } from 'lib/interfaces/topic';
+import { showAlert } from 'lib/errorHandling';
 
 export const TOPIC_EDIT_FORM_DEFAULT_PROPS = {
   partitions: 1,
@@ -79,8 +80,19 @@ const Edit: React.FC = () => {
     try {
       await updateTopic.mutateAsync(newData);
       navigate('../');
-    } catch {
-      // do nothing
+    } catch (e: any) {
+      if (
+        e?.status === 202 ||
+        (e?.message && e.message.toLowerCase().includes('approval'))
+      ) {
+        showAlert('warning', {
+          title: 'Approval Required',
+          message:
+            e.message ||
+            'Topic configuration update submitted to approval queue.',
+        });
+        navigate(clusterApprovalsPath(clusterName));
+      }
     }
   };
 

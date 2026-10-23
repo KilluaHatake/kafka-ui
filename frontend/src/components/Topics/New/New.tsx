@@ -1,6 +1,6 @@
 import React from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
-import { ClusterNameRoute, clusterTopicsPath } from 'lib/paths';
+import { ClusterNameRoute, clusterTopicsPath, clusterApprovalsPath } from 'lib/paths';
 import TopicForm from 'components/Topics/shared/Form/TopicForm';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -9,6 +9,7 @@ import useAppParams from 'lib/hooks/useAppParams';
 import { useCreateTopic } from 'lib/hooks/api/topics';
 import { TopicFormData } from 'lib/interfaces/topic';
 import ResourcePageHeading from 'components/common/ResourcePageHeading/ResourcePageHeading';
+import { showAlert } from 'lib/errorHandling';
 
 enum Filters {
   NAME = 'name',
@@ -42,8 +43,19 @@ const New: React.FC = () => {
     try {
       await createTopic.createResource(data);
       navigate(`../${data.name}`);
-    } catch {
-      // do nothing
+    } catch (e: any) {
+      if (
+        e?.status === 202 ||
+        (e?.message && e.message.toLowerCase().includes('approval'))
+      ) {
+        showAlert('warning', {
+          title: 'Approval Required',
+          message:
+            e.message ||
+            'Topic creation request submitted to approval queue.',
+        });
+        navigate(clusterApprovalsPath(clusterName));
+      }
     }
   };
 

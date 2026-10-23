@@ -5,6 +5,12 @@ import static io.kafbat.ui.model.ConnectorActionDTO.RESTART_ALL_TASKS;
 import static io.kafbat.ui.model.ConnectorActionDTO.RESTART_FAILED_TASKS;
 
 import io.kafbat.ui.api.KafkaConnectApi;
+import io.kafbat.ui.config.auth.AuthenticatedUser;
+import io.kafbat.ui.exception.ApprovalRequiredException;
+import io.kafbat.ui.model.approval.ApprovalRequest;
+import io.kafbat.ui.model.approval.ApprovalTargetType;
+import io.kafbat.ui.service.approval.ApprovalService;
+import io.kafbat.ui.service.rbac.AccessControlService;
 import io.kafbat.ui.model.ConnectDTO;
 import io.kafbat.ui.model.ConnectorActionDTO;
 import io.kafbat.ui.model.ConnectorColumnsToSortDTO;
@@ -42,6 +48,7 @@ public class KafkaConnectController extends AbstractController implements KafkaC
   private static final String CONNECTOR_NAME = "connectorName";
 
   private final KafkaConnectService kafkaConnectService;
+  private final ApprovalService approvalService;
 
   @Override
   public Mono<ResponseEntity<Flux<ConnectDTO>>> getConnects(String clusterName,
@@ -93,8 +100,32 @@ public class KafkaConnectController extends AbstractController implements KafkaC
         .build();
 
     return validateAccess(context).then(
-        kafkaConnectService.createConnector(getCluster(clusterName), connectName, connector)
-            .map(ResponseEntity::ok)
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .flatMap(user -> {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, user)) {
+                return connector.flatMap(newConn -> {
+                  Map<String, Object> cfgMap = newConn.getConfig() instanceof Map<?, ?> m
+                      ? (Map<String, Object>) m
+                      : Map.of();
+                  return approvalService.createRequest(
+                      clusterName,
+                      ApprovalTargetType.CONNECTOR_CREATE,
+                      newConn.getName(),
+                      connectName,
+                      user,
+                      null,
+                      cfgMap,
+                      null
+                  ).flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                      "Connector creation request submitted for approval (ID: " + req.getId() + ")",
+                      req.getId()
+                  )));
+                });
+              }
+              return kafkaConnectService.createConnector(getCluster(clusterName), connectName, connector)
+                  .map(ResponseEntity::ok);
+            })
     ).doOnEach(sig -> audit(context, sig));
   }
 
@@ -203,10 +234,34 @@ public class KafkaConnectController extends AbstractController implements KafkaC
         .build();
 
     return validateAccess(context).then(
-            kafkaConnectService
-                .setConnectorConfig(getCluster(clusterName), connectName, connectorName, requestBody)
-                .map(ResponseEntity::ok))
-        .doOnEach(sig -> audit(context, sig));
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .flatMap(user ->
+                requestBody.flatMap(newConfig -> {
+                  if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_UPDATE, user)) {
+                    return kafkaConnectService.getConnectorConfig(getCluster(clusterName), connectName, connectorName)
+                        .onErrorReturn(Map.of())
+                        .flatMap(oldConfig -> approvalService.createRequest(
+                            clusterName,
+                            ApprovalTargetType.CONNECTOR_UPDATE,
+                            connectorName,
+                            connectName,
+                            user,
+                            oldConfig,
+                            newConfig,
+                            null
+                        ))
+                        .flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                            "Connector configuration update submitted for approval (ID: " + req.getId() + ")",
+                            req.getId()
+                        )));
+                  }
+                  return kafkaConnectService
+                      .setConnectorConfig(getCluster(clusterName), connectName, connectorName, Mono.just(newConfig))
+                      .map(ResponseEntity::ok);
+                })
+            )
+    ).doOnEach(sig -> audit(context, sig));
   }
 
   @Override
@@ -221,9 +276,28 @@ public class KafkaConnectController extends AbstractController implements KafkaC
         .build();
 
     return validateAccess(context).then(
-        kafkaConnectService
-            .updateConnectorState(getCluster(clusterName), connectName, connectorName, action)
-            .map(ResponseEntity::ok)
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .flatMap(user -> {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_ACTION, user)) {
+                return approvalService.createRequest(
+                    clusterName,
+                    ApprovalTargetType.CONNECTOR_ACTION,
+                    connectorName,
+                    connectName,
+                    user,
+                    null,
+                    Map.of("action", action.getValue()),
+                    Map.of("action", action.getValue())
+                ).flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                    "Connector action " + action.getValue() + " submitted for approval (ID: " + req.getId() + ")",
+                    req.getId()
+                )));
+              }
+              return kafkaConnectService
+                  .updateConnectorState(getCluster(clusterName), connectName, connectorName, action)
+                  .map(ResponseEntity::ok);
+            })
     ).doOnEach(sig -> audit(context, sig));
   }
 

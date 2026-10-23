@@ -9,6 +9,12 @@ import static io.kafbat.ui.model.rbac.permission.TopicAction.VIEW;
 import static java.util.stream.Collectors.toList;
 
 import io.kafbat.ui.api.TopicsApi;
+import io.kafbat.ui.config.auth.AuthenticatedUser;
+import io.kafbat.ui.exception.ApprovalRequiredException;
+import io.kafbat.ui.model.approval.ApprovalRequest;
+import io.kafbat.ui.model.approval.ApprovalTargetType;
+import io.kafbat.ui.service.approval.ApprovalService;
+import io.kafbat.ui.service.rbac.AccessControlService;
 import io.kafbat.ui.config.ClustersProperties;
 import io.kafbat.ui.mapper.ClusterMapper;
 import io.kafbat.ui.model.FullConnectorInfoDTO;
@@ -38,6 +44,7 @@ import io.kafbat.ui.service.acl.AclsService;
 import io.kafbat.ui.service.analyze.TopicAnalysisService;
 import io.kafbat.ui.service.mcp.McpTool;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.validation.Valid;
@@ -66,6 +73,7 @@ public class TopicsController extends AbstractController implements TopicsApi, M
   private final ClustersProperties clustersProperties;
   private final KafkaConnectService kafkaConnectService;
   private final AclsService aclsService;
+  private final ApprovalService approvalService;
 
   @Override
   public Mono<ResponseEntity<TopicDTO>> createTopic(
@@ -78,12 +86,40 @@ public class TopicsController extends AbstractController implements TopicsApi, M
           .operationParams(topicCreation)
           .build();
 
-      return validateAccess(context)
-          .then(topicsService.createTopic(getCluster(clusterName), topicCreation))
-          .map(clusterMapper::toTopic)
-          .map(s -> new ResponseEntity<>(s, HttpStatus.OK))
-          .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()))
-          .doOnEach(sig -> audit(context, sig));
+      return validateAccess(context).then(
+          AccessControlService.getUser()
+              .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+              .flatMap(user -> {
+                if (approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, user)) {
+                  Map<String, Object> newConfig = new HashMap<>();
+                  if (topicCreation.getConfigs() != null) {
+                    newConfig.putAll(topicCreation.getConfigs());
+                  }
+                  Map<String, Object> metadata = Map.of(
+                      "partitions", topicCreation.getPartitions(),
+                      "replicationFactor", topicCreation.getReplicationFactor()
+                  );
+                  return approvalService.createRequest(
+                      clusterName,
+                      ApprovalTargetType.TOPIC_CREATE,
+                      topicCreation.getName(),
+                      null,
+                      user,
+                      null,
+                      newConfig,
+                      metadata
+                  ).flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                      "Topic creation request submitted for approval (ID: " + req.getId() + ")",
+                      req.getId()
+                  )));
+                }
+                return topicsService.createTopic(getCluster(clusterName), topicCreation)
+                    .map(clusterMapper::toTopic)
+                    .map(s -> new ResponseEntity<>(s, HttpStatus.OK));
+              })
+      )
+      .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()))
+      .doOnEach(sig -> audit(context, sig));
     });
   }
 
@@ -266,10 +302,42 @@ public class TopicsController extends AbstractController implements TopicsApi, M
         .build();
 
     return validateAccess(context).then(
-        topicsService
-            .updateTopic(getCluster(clusterName), topicName, topicUpdate)
-            .map(clusterMapper::toTopic)
-            .map(ResponseEntity::ok)
+        AccessControlService.getUser()
+            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .flatMap(user -> {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CONFIG_UPDATE, user)) {
+                return topicUpdate.flatMap(updateDto -> {
+                  Map<String, Object> newConfig = new HashMap<>();
+                  if (updateDto.getConfigs() != null) {
+                    newConfig.putAll(updateDto.getConfigs());
+                  }
+                  return topicsService.getTopicConfigs(getCluster(clusterName), topicName)
+                      .onErrorReturn(List.of())
+                      .flatMap(configsList -> {
+                        Map<String, Object> oldConfig = new HashMap<>();
+                        configsList.forEach(c -> oldConfig.put(c.name(), c.value()));
+                        return approvalService.createRequest(
+                            clusterName,
+                            ApprovalTargetType.TOPIC_CONFIG_UPDATE,
+                            topicName,
+                            null,
+                            user,
+                            oldConfig,
+                            newConfig,
+                            null
+                        );
+                      })
+                      .flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                          "Topic configuration update submitted for approval (ID: " + req.getId() + ")",
+                          req.getId()
+                      )));
+                });
+              }
+              return topicsService
+                  .updateTopic(getCluster(clusterName), topicName, topicUpdate)
+                  .map(clusterMapper::toTopic)
+                  .map(ResponseEntity::ok);
+            })
     ).doOnEach(sig -> audit(context, sig));
   }
 

@@ -13,7 +13,9 @@ import {
   clusterSchemasPath,
   clusterTopicsPath,
   kafkaConnectPath,
+  clusterApprovalsPath,
 } from 'lib/paths';
+import { useApprovals } from 'lib/hooks/api/approvals';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLocalStorage } from 'lib/hooks/useLocalStorage';
 import { ClusterColorKey } from 'theme/theme';
@@ -48,6 +50,9 @@ const ClusterMenu: FC<ClusterMenuProps> = ({
   const getIsMenuItemActive = (path: string) => {
     return location.pathname.includes(path);
   };
+
+  const { data: pendingRequests = [] } = useApprovals(name, 'PENDING');
+  const pendingCount = pendingRequests.length;
 
   const { ref } = useScrollIntoView<HTMLUListElement>(opened);
 
@@ -123,6 +128,11 @@ const ClusterMenu: FC<ClusterMenuProps> = ({
               title="ACL"
             />
           )}
+          <MenuItem
+            isActive={getIsMenuItemActive(clusterApprovalsPath(name))}
+            to={clusterApprovalsPath(name)}
+            title={pendingCount > 0 ? `Approvals (${pendingCount})` : 'Approvals'}
+          />
         </S.List>
       )}
     </S.ClusterList>
