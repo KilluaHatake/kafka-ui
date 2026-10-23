@@ -122,7 +122,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>((props, ref) => {
 
   const fieldId = React.useId();
 
-  const isHookFormField = !!name && !!methods.register;
+  const isHookFormField = !!name && !!methods?.register;
 
   const keyPressEventHandler = (
     event: React.KeyboardEvent<HTMLInputElement>
