@@ -107,4 +107,43 @@ describe('DynamicForm', () => {
 
     expect(screen.getByText('true')).toBeInTheDocument();
   });
+
+  it('filters out name and connector.class configs from dynamic form', () => {
+    const handleChange = jest.fn();
+    const configsWithDuplicates: ConnectorPluginConfigItem[] = [
+      {
+        definition: {
+          name: 'name',
+          displayName: 'Connector Name Config',
+          type: 'STRING',
+        },
+      },
+      {
+        definition: {
+          name: 'connector.class',
+          displayName: 'Connector Class Config',
+          type: 'STRING',
+        },
+      },
+      {
+        definition: {
+          name: 'my.custom.property',
+          displayName: 'Custom Property',
+          type: 'STRING',
+        },
+      },
+    ];
+
+    render(
+      <DynamicForm
+        configs={configsWithDuplicates}
+        values={{}}
+        onChange={handleChange}
+      />
+    );
+
+    expect(screen.queryByText('Connector Name Config')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connector Class Config')).not.toBeInTheDocument();
+    expect(screen.getByText('Custom Property')).toBeInTheDocument();
+  });
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Input from 'components/common/Input/Input';
+import * as InputStyled from 'components/common/Input/Input.styled';
 import Switch from 'components/common/Switch/Switch';
 import Select from 'components/common/Select/Select';
 import Tooltip from 'components/common/Tooltip/Tooltip';
@@ -53,11 +53,20 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     }));
   };
 
+  // Filter out 'name' and 'connector.class' because New.tsx has dedicated top-level inputs for them
+  const filteredConfigs = React.useMemo(() => {
+    return configs.filter(
+      (item) =>
+        item.definition?.name !== 'name' &&
+        item.definition?.name !== 'connector.class'
+    );
+  }, [configs]);
+
   // Group configs by group name
   const groupedConfigs = React.useMemo(() => {
     const groups: Record<string, ConnectorPluginConfigItem[]> = {};
 
-    configs.forEach((item) => {
+    filteredConfigs.forEach((item) => {
       const groupName = item.definition?.group || 'General Configuration';
       if (!groups[groupName]) {
         groups[groupName] = [];
@@ -66,12 +75,12 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     });
 
     return groups;
-  }, [configs]);
+  }, [filteredConfigs]);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     // Default open all groups initially
     const initial: Record<string, boolean> = {};
-    configs.forEach((item) => {
+    filteredConfigs.forEach((item) => {
       const groupName = item.definition?.group || 'General Configuration';
       initial[groupName] = true;
     });
@@ -87,7 +96,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
   const renderField = (item: ConnectorPluginConfigItem) => {
     const def = item.definition;
-    if (!def || !def.name) return null;
+    if (!def || !def.name || def.name === 'name' || def.name === 'connector.class') return null;
 
     const key = def.name;
     const type = def.type?.toUpperCase() || 'STRING';
@@ -112,8 +121,9 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
         {isPassword ? (
           <S.PasswordWrapper>
-            <Input
+            <InputStyled.Input
               inputSize="M"
+              search={false}
               type={showSecrets[key] ? 'text' : 'password'}
               name={key}
               autoComplete="new-password"
@@ -143,13 +153,14 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             <S.ToggleText>{String(currentValue).toLowerCase() === 'true' ? 'true' : 'false'}</S.ToggleText>
           </div>
         ) : type === 'INT' || type === 'LONG' || type === 'SHORT' || type === 'DOUBLE' ? (
-          <Input
+          <InputStyled.Input
             inputSize="M"
+            search={false}
             type="number"
             step={type === 'DOUBLE' ? 'any' : '1'}
             name={key}
             placeholder={def.defaultValue ? `Default: ${def.defaultValue}` : undefined}
-            value={String(currentValue)}
+            value={currentValue !== undefined && currentValue !== null ? String(currentValue) : ''}
             disabled={disabled}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               const val = e.target.value;
@@ -157,12 +168,13 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             }}
           />
         ) : type === 'LIST' ? (
-          <Input
+          <InputStyled.Input
             inputSize="M"
+            search={false}
             type="text"
             name={key}
             placeholder={def.defaultValue ? `Default: ${def.defaultValue}` : 'Comma-separated values (e.g. val1, val2)'}
-            value={String(currentValue)}
+            value={currentValue !== undefined && currentValue !== null ? String(currentValue) : ''}
             disabled={disabled}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(key, e.target.value)}
           />
@@ -171,20 +183,21 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             selectSize="M"
             name={key}
             disabled={disabled}
-            value={{ value: String(currentValue), label: String(currentValue) }}
-            options={recommended.map((v) => ({ value: v, label: v }))}
-            onChange={(opt: { value: string; label: string } | string) => {
-              const val = typeof opt === 'string' ? opt : opt.value;
+            value={String(currentValue)}
+            options={recommended.map((v) => ({ value: String(v), label: String(v) }))}
+            onChange={(opt: any) => {
+              const val = typeof opt === 'object' && opt !== null ? opt.value : opt;
               onChange(key, val);
             }}
           />
         ) : (
-          <Input
+          <InputStyled.Input
             inputSize="M"
+            search={false}
             type="text"
             name={key}
             placeholder={def.defaultValue ? `Default: ${def.defaultValue}` : undefined}
-            value={String(currentValue)}
+            value={currentValue !== undefined && currentValue !== null ? String(currentValue) : ''}
             disabled={disabled}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(key, e.target.value)}
           />

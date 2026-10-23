@@ -171,18 +171,23 @@ const New: React.FC = () => {
   const onSubmit = async (values: FormValues) => {
     try {
       const rawConfig = values.config?.trim() || '';
-      const configObj =
+      const baseConfig =
         viewMode === 'form' && Object.keys(formConfigValues).length > 0
           ? formConfigValues
           : rawConfig
           ? JSON.parse(rawConfig)
           : {};
 
+      const finalConfig = {
+        ...baseConfig,
+        'connector.class': selectedPlugin || baseConfig['connector.class'],
+      };
+
       const connector = await mutation.createResource({
-        connectName: values.connectName,
+        connectName: values.connectName || selectedConnect,
         newConnector: {
           name: values.name,
-          config: configObj,
+          config: finalConfig,
         },
       });
 
@@ -241,11 +246,11 @@ const New: React.FC = () => {
             selectSize="M"
             name="connectName"
             disabled={isSubmitting}
-            onChange={(val: { value: string; label: string } | string) => {
-              const selectedVal = typeof val === 'string' ? val : val.value;
+            onChange={(val: any) => {
+              const selectedVal = typeof val === 'object' && val !== null ? val.value : val;
               handleConnectChange(selectedVal);
             }}
-            value={connectOptions.find((opt) => opt.value === selectedConnect) || connectOptions[0]}
+            value={selectedConnect}
             minWidth="100%"
             options={connectOptions}
           />
@@ -261,11 +266,11 @@ const New: React.FC = () => {
             name="pluginName"
             disabled={isSubmitting || isPluginsLoading || pluginOptions.length === 0}
             placeholder={isPluginsLoading ? 'Loading plugins...' : 'Select connector plugin'}
-            onChange={(val: { value: string; label: string } | string) => {
-              const selectedVal = typeof val === 'string' ? val : val.value;
+            onChange={(val: any) => {
+              const selectedVal = typeof val === 'object' && val !== null ? val.value : val;
               handlePluginChange(selectedVal);
             }}
-            value={pluginOptions.find((opt) => opt.value === selectedPlugin)}
+            value={selectedPlugin}
             minWidth="100%"
             options={pluginOptions}
           />
