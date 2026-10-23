@@ -107,6 +107,12 @@ export const HelperText = styled.span`
   line-height: 1.3;
 `;
 
+export const ToggleText = styled.span`
+  font-size: 13px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.default.color.normal};
+`;
+
 export const InfoBadge = styled.span`
   display: inline-flex;
   align-items: center;

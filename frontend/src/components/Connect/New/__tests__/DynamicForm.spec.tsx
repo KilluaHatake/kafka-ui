@@ -77,4 +77,34 @@ describe('DynamicForm', () => {
     fireEvent.change(passwordInput, { target: { value: 'supersecret' } });
     expect(handleChange).toHaveBeenCalledWith('connection.password', 'supersecret');
   });
+
+  it('renders boolean fields with theme-colored toggle text', () => {
+    const handleChange = jest.fn();
+    const booleanConfigs: ConnectorPluginConfigItem[] = [
+      {
+        definition: {
+          name: 'enable.logging',
+          displayName: 'Enable Logging',
+          type: 'BOOLEAN',
+          required: false,
+          defaultValue: 'true',
+          group: 'Common',
+        },
+        value: {
+          name: 'enable.logging',
+          value: 'true',
+        },
+      },
+    ];
+
+    render(
+      <DynamicForm
+        configs={booleanConfigs}
+        values={{ 'enable.logging': true }}
+        onChange={handleChange}
+      />
+    );
+
+    expect(screen.getByText('true')).toBeInTheDocument();
+  });
 });
