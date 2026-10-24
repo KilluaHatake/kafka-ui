@@ -141,13 +141,13 @@ const ApprovalDetailsModal: React.FC<Props> = ({
           {request.rejectionReason && (
             <S.InfoItem style={{ gridColumn: 'span 2' }}>
               <span>Rejection Reason</span>
-              <span style={{ color: '#d9534f' }}>{request.rejectionReason}</span>
+              <span style={{ color: '#ef4444', fontWeight: 500 }}>{request.rejectionReason}</span>
             </S.InfoItem>
           )}
           {request.executionError && (
             <S.InfoItem style={{ gridColumn: 'span 2' }}>
               <span>Execution Error</span>
-              <span style={{ color: '#d9534f' }}>{request.executionError}</span>
+              <span style={{ color: '#ef4444', fontWeight: 500 }}>{request.executionError}</span>
             </S.InfoItem>
           )}
           {request.metadata && Object.keys(request.metadata).length > 0 && (

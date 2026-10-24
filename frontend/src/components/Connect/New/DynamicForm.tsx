@@ -150,7 +150,9 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                 onChange(key, !currentBool);
               }}
             />
-            <S.ToggleText>{String(currentValue).toLowerCase() === 'true' ? 'true' : 'false'}</S.ToggleText>
+            <S.ToggleText $checked={String(currentValue).toLowerCase() === 'true' || Boolean(currentValue)}>
+              {String(currentValue).toLowerCase() === 'true' ? 'true' : 'false'}
+            </S.ToggleText>
           </div>
         ) : type === 'INT' || type === 'LONG' || type === 'SHORT' || type === 'DOUBLE' ? (
           <InputStyled.Input

@@ -18,6 +18,12 @@ export const Title = styled.h1`
   margin: 0;
 `;
 
+export const Subtitle = styled.div`
+  font-size: 13px;
+  color: ${({ theme }) => theme.table.th.color.normal};
+  margin-top: 4px;
+`;
+
 export const HeaderActions = styled.div`
   display: flex;
   gap: 8px;
@@ -60,6 +66,7 @@ export const FilterItem = styled.div`
 
 export const TableContainer = styled.div`
   background: ${({ theme }) => theme.default.backgroundColor};
+  border: 1px solid ${({ theme }) => theme.table.td.borderTop};
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -118,6 +125,7 @@ export const InfoGrid = styled.div`
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   background-color: ${({ theme }) => theme.modal.backgroundColor};
+  border: 1px solid ${({ theme }) => theme.table.td.borderTop};
   padding: 12px 16px;
   border-radius: 6px;
 `;
@@ -213,6 +221,55 @@ export const Textarea = styled.textarea`
   font-size: 13px;
   resize: vertical;
   min-height: 80px;
+  outline: none;
+
+  &:focus {
+    border-color: ${({ theme }) => theme.input.borderColor.focus};
+  }
+`;
+
+export const SettingCheckboxLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.heading.base.color};
+  user-select: none;
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #22c55e;
+  }
+`;
+
+export const SettingDescription = styled.div`
+  font-size: 12px;
+  color: ${({ theme }) => theme.table.th.color.normal};
+  margin-left: 24px;
+  margin-top: 2px;
+`;
+
+export const SettingInputLabel = styled.label`
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.heading.base.color};
+  margin-bottom: 6px;
+`;
+
+export const SettingInput = styled.input`
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid ${({ theme }) => theme.input.borderColor.normal};
+  background-color: ${({ theme }) => theme.input.backgroundColor.normal};
+  color: ${({ theme }) => theme.input.color.normal};
+  font-size: 13px;
+  box-sizing: border-box;
   outline: none;
 
   &:focus {

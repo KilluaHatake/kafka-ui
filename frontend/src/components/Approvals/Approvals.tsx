@@ -90,7 +90,7 @@ const Approvals: React.FC = () => {
         Are you sure you want to delete the pending approval request for{' '}
         <b>{req.targetName}</b>?
         <br />
-        <span style={{ fontSize: '12px', color: '#888' }}>
+        <span style={{ fontSize: '12px', opacity: 0.8 }}>
           This will remove the request from the queue so you can raise a fresh request with changes.
         </span>
       </>,
@@ -122,9 +122,9 @@ const Approvals: React.FC = () => {
       <S.Header>
         <div>
           <S.Title>Approval Requests</S.Title>
-          <div style={{ fontSize: '13px', color: '#777', marginTop: '4px' }}>
+          <S.Subtitle>
             Cluster: <strong>{clusterName}</strong> • {pendingCount} Pending Change{pendingCount === 1 ? '' : 's'}
-          </div>
+          </S.Subtitle>
         </div>
         <S.HeaderActions>
           <Button

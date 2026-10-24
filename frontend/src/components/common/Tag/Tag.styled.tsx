@@ -6,13 +6,15 @@ interface Props {
 }
 
 export const Tag = styled.span.attrs({ role: 'widget' })<Props>`
-  border: none;
+  border: 1px solid ${({ theme, color }) => theme.tag.border?.[color] || 'transparent'};
   border-radius: 16px;
   height: 20px;
-  line-height: 20px;
+  line-height: 18px;
   background-color: ${({ theme, color }) => theme.tag.backgroundColor[color]};
-  color: ${({ theme }) => theme.tag.color};
+  color: ${({ theme, color }) => theme.tag.textColor?.[color] || theme.tag.color};
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   display: inline-block;
   padding-left: 0.75em;
   padding-right: 0.75em;
@@ -23,13 +25,15 @@ export const Tag = styled.span.attrs({ role: 'widget' })<Props>`
 `;
 
 export const MultiLineTag = styled.div.attrs({ role: 'widget' })<Props>`
-  border: none;
+  border: 1px solid ${({ theme, color }) => theme.tag.border?.[color] || 'transparent'};
   border-radius: 16px;
   height: fit-content;
-  line-height: 20px;
+  line-height: 18px;
   background-color: ${({ theme, color }) => theme.tag.backgroundColor[color]};
-  color: ${({ theme }) => theme.tag.color};
+  color: ${({ theme, color }) => theme.tag.textColor?.[color] || theme.tag.color};
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   display: inline-block;
   padding-left: 0.75em;
   padding-right: 0.75em;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'components/common/Modal/Modal';
 import { Button } from 'components/common/Button/Button';
+import * as S from './Approvals.styled';
 import {
   useApprovalSettings,
   useUpdateApprovalSettings,
@@ -73,7 +74,7 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireTopicCreation}
@@ -85,14 +86,14 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Topic Creation
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, non-architects cannot create topics directly.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireTopicConfigUpdates}
@@ -104,14 +105,14 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Topic Configuration Changes
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, topic property edits require approval.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireConnectorDeployments}
@@ -123,14 +124,14 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Kafka Connect Deployments & Mutations
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, creating or editing connectors requires architect approval.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireBrokerConfigUpdates}
@@ -142,14 +143,14 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Broker Configuration Changes
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, updating broker configuration properties requires architect review.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireAlertSettingsUpdates}
@@ -161,14 +162,14 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Error Alert Notification Settings
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, changing Slack or Email alert notification settings requires approval.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireConsumerGroupDelete}
@@ -180,14 +181,14 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Consumer Group Deletion
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, deleting a consumer group requires architect approval.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 500 }}>
+            <S.SettingCheckboxLabel>
               <input
                 type="checkbox"
                 checked={formState.requireConnectorResetOffsets}
@@ -199,25 +200,18 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
               />
               Require approval for Kafka Connect Offset Resets
-            </label>
-            <div style={{ fontSize: '12px', color: '#888', marginLeft: '24px' }}>
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
               When enabled, resetting connector offsets requires architect approval.
-            </div>
+            </S.SettingDescription>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>
+            <S.SettingInputLabel>
               Approver Roles (comma-separated):
-            </label>
-            <input
+            </S.SettingInputLabel>
+            <S.SettingInput
               type="text"
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '4px',
-                border: '1px solid #ccc',
-                boxSizing: 'border-box',
-              }}
               value={formState.approverRoles?.join(', ') || ''}
               onChange={(e) =>
                 setFormState((prev) => ({
@@ -232,18 +226,11 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>
+            <S.SettingInputLabel>
               Direct Apply Roles (Bypass Approval, comma-separated):
-            </label>
-            <input
+            </S.SettingInputLabel>
+            <S.SettingInput
               type="text"
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '4px',
-                border: '1px solid #ccc',
-                boxSizing: 'border-box',
-              }}
               value={formState.directApplyRoles?.join(', ') || ''}
               onChange={(e) =>
                 setFormState((prev) => ({

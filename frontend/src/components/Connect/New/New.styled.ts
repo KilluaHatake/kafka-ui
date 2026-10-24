@@ -98,7 +98,7 @@ export const LabelRow = styled.div`
 `;
 
 export const RequiredMark = styled.span`
-  color: ${({ theme }) => theme.alert.color.error};
+  color: #ef4444;
 `;
 
 export const HelperText = styled.span`
@@ -107,24 +107,34 @@ export const HelperText = styled.span`
   line-height: 1.3;
 `;
 
-export const ToggleText = styled.span`
+export const ToggleText = styled.span<{ $checked?: boolean }>`
   font-size: 13px;
-  font-weight: 500;
-  color: ${({ theme }) => theme.default.color.normal};
+  font-weight: 600;
+  color: ${({ $checked, theme }) =>
+    $checked
+      ? (theme.tag?.textColor?.green || '#22c55e')
+      : theme.table.th.color.normal};
 `;
 
 export const InfoBadge = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   font-size: 10px;
   font-weight: bold;
-  background-color: ${({ theme }) => theme.table.th.backgroundColor.normal};
-  color: ${({ theme }) => theme.table.th.color.normal};
+  background-color: ${({ theme }) => theme.select.backgroundColor.normal};
+  color: ${({ theme }) => theme.heading.base.color};
+  border: 1px solid ${({ theme }) => theme.select.borderColor.normal};
   cursor: help;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: ${({ theme }) => theme.button.primary.backgroundColor.normal};
+    border-color: currentColor;
+  }
 `;
 
 export const PasswordWrapper = styled.div`
