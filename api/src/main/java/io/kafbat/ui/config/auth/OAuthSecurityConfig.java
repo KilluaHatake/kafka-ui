@@ -66,8 +66,15 @@ public class OAuthSecurityConfig extends AbstractAuthSecurityConfig {
    */
   @Bean(name = "oauthWebClient")
   public WebClient oauthWebClient() {
+    HttpClient httpClient = HttpClient.create()
+        .httpResponseDecoder(spec -> spec
+            .maxHeaderSize(128 * 1024)
+            .maxInitialLineLength(32 * 1024))
+        .proxyWithSystemProperties();
+
     return WebClient.builder()
-        .clientConnector(new ReactorClientHttpConnector(HttpClient.create().proxyWithSystemProperties()))
+        .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
         .build();
   }
 

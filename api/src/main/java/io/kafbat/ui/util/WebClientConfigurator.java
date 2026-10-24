@@ -39,6 +39,9 @@ public class WebClientConfigurator {
   private final WebClient.Builder builder = WebClient.builder();
   private HttpClient httpClient = HttpClient
       .create()
+      .httpResponseDecoder(spec -> spec
+          .maxHeaderSize(128 * 1024)
+          .maxInitialLineLength(32 * 1024))
       .proxyWithSystemProperties();
   private ObjectMapper objectMapper = defaultOM();
 
