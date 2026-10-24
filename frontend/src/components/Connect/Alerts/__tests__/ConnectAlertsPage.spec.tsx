@@ -121,4 +121,45 @@ describe('ConnectAlertsPage', () => {
       expect.any(Object)
     );
   });
+
+  it('allows erasing polling interval without resetting to 30 or 5 and allows typing 100', () => {
+    render(<ConnectAlertsPage />);
+
+    const pollingInput = screen.getByLabelText('Polling Interval (Seconds)');
+    expect(pollingInput).toHaveValue(30);
+
+    // User clears the field (backspaces everything)
+    fireEvent.change(pollingInput, { target: { value: '' } });
+    expect(pollingInput).toHaveValue(null);
+
+    // User types 100
+    fireEvent.change(pollingInput, { target: { value: '100' } });
+    expect(pollingInput).toHaveValue(100);
+
+    const saveButton = screen.getByRole('button', { name: 'Save Settings' });
+    fireEvent.click(saveButton);
+
+    expect(mockUpdateMutation.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pollingIntervalMs: 100000,
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it('normalizes polling interval on blur when left empty or below 5', () => {
+    render(<ConnectAlertsPage />);
+
+    const pollingInput = screen.getByLabelText('Polling Interval (Seconds)');
+
+    // Set to 2 (below min 5) and blur
+    fireEvent.change(pollingInput, { target: { value: '2' } });
+    fireEvent.blur(pollingInput);
+    expect(pollingInput).toHaveValue(5);
+
+    // Clear and blur -> resets to 30 default
+    fireEvent.change(pollingInput, { target: { value: '' } });
+    fireEvent.blur(pollingInput);
+    expect(pollingInput).toHaveValue(30);
+  });
 });

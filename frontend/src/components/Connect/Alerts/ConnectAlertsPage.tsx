@@ -48,12 +48,32 @@ const ConnectAlertsPage: React.FC = () => {
   const [showSlackWebhook, setShowSlackWebhook] = useState(false);
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [recipientsInput, setRecipientsInput] = useState('');
+  const [pollingIntervalInput, setPollingIntervalInput] = useState<string>(
+    String(Math.round(DEFAULT_SETTINGS.pollingIntervalMs / 1000))
+  );
+  const [throttleIntervalInput, setThrottleIntervalInput] = useState<string>(
+    String(DEFAULT_SETTINGS.throttleIntervalMinutes)
+  );
+  const [smtpPortInput, setSmtpPortInput] = useState<string>(
+    String(DEFAULT_SETTINGS.email.smtpPort)
+  );
   const [testingChannel, setTestingChannel] = useState<'slack' | 'email' | null>(null);
 
   useEffect(() => {
     if (serverSettings) {
       setFormState(serverSettings);
       setRecipientsInput(serverSettings.email?.recipients?.join(', ') || '');
+      setPollingIntervalInput(
+        String(Math.round((serverSettings.pollingIntervalMs || 30000) / 1000))
+      );
+      setThrottleIntervalInput(
+        String(serverSettings.throttleIntervalMinutes ?? 15)
+      );
+      setSmtpPortInput(
+        serverSettings.email?.smtpPort !== undefined && serverSettings.email?.smtpPort !== null
+          ? String(serverSettings.email.smtpPort)
+          : '587'
+      );
     }
   }, [serverSettings]);
 
@@ -74,7 +94,33 @@ const ConnectAlertsPage: React.FC = () => {
   };
 
   const handleSave = () => {
-    updateMutation.mutate(formState, {
+    const pollingSec = parseInt(pollingIntervalInput, 10);
+    const finalPollingMs =
+      isNaN(pollingSec) || pollingSec < 5 ? (isNaN(pollingSec) ? 30000 : 5000) : pollingSec * 1000;
+
+    const throttleMin = parseInt(throttleIntervalInput, 10);
+    const finalThrottleMin =
+      isNaN(throttleMin) || throttleMin < 1 ? (isNaN(throttleMin) ? 15 : 1) : throttleMin;
+
+    const port = parseInt(smtpPortInput, 10);
+    const finalPort = isNaN(port) || port <= 0 ? 587 : port;
+
+    const payload: ConnectAlertSettings = {
+      ...formState,
+      pollingIntervalMs: finalPollingMs,
+      throttleIntervalMinutes: finalThrottleMin,
+      email: {
+        ...formState.email,
+        smtpPort: finalPort,
+      },
+    };
+
+    setFormState(payload);
+    setPollingIntervalInput(String(Math.round(finalPollingMs / 1000)));
+    setThrottleIntervalInput(String(finalThrottleMin));
+    setSmtpPortInput(String(finalPort));
+
+    updateMutation.mutate(payload, {
       onSuccess: (res: any) => {
         if (
           handleApprovalRedirect(
@@ -126,6 +172,17 @@ const ConnectAlertsPage: React.FC = () => {
     if (serverSettings) {
       setFormState(serverSettings);
       setRecipientsInput(serverSettings.email?.recipients?.join(', ') || '');
+      setPollingIntervalInput(
+        String(Math.round((serverSettings.pollingIntervalMs || 30000) / 1000))
+      );
+      setThrottleIntervalInput(
+        String(serverSettings.throttleIntervalMinutes ?? 15)
+      );
+      setSmtpPortInput(
+        serverSettings.email?.smtpPort !== undefined && serverSettings.email?.smtpPort !== null
+          ? String(serverSettings.email.smtpPort)
+          : '587'
+      );
       toast('Form reset to server settings', { icon: 'ℹ️' });
     }
   };
@@ -182,12 +239,33 @@ const ConnectAlertsPage: React.FC = () => {
               search={false}
               type="number"
               min={5}
-              value={Math.round(formState.pollingIntervalMs / 1000)}
+              value={pollingIntervalInput}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const val = parseInt(e.target.value, 10);
+                const raw = e.target.value;
+                setPollingIntervalInput(raw);
+                const val = parseInt(raw, 10);
+                if (!isNaN(val)) {
+                  setFormState((prev) => ({
+                    ...prev,
+                    pollingIntervalMs: val * 1000,
+                  }));
+                }
+              }}
+              onBlur={() => {
+                if (pollingIntervalInput.trim() === '') {
+                  setPollingIntervalInput('30');
+                  setFormState((prev) => ({
+                    ...prev,
+                    pollingIntervalMs: 30000,
+                  }));
+                  return;
+                }
+                const val = parseInt(pollingIntervalInput, 10);
+                const finalVal = isNaN(val) ? 30 : Math.max(5, val);
+                setPollingIntervalInput(String(finalVal));
                 setFormState((prev) => ({
                   ...prev,
-                  pollingIntervalMs: isNaN(val) ? 30000 : Math.max(5, val) * 1000,
+                  pollingIntervalMs: finalVal * 1000,
                 }));
               }}
             />
@@ -202,12 +280,33 @@ const ConnectAlertsPage: React.FC = () => {
               search={false}
               type="number"
               min={1}
-              value={formState.throttleIntervalMinutes}
+              value={throttleIntervalInput}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const val = parseInt(e.target.value, 10);
+                const raw = e.target.value;
+                setThrottleIntervalInput(raw);
+                const val = parseInt(raw, 10);
+                if (!isNaN(val)) {
+                  setFormState((prev) => ({
+                    ...prev,
+                    throttleIntervalMinutes: val,
+                  }));
+                }
+              }}
+              onBlur={() => {
+                if (throttleIntervalInput.trim() === '') {
+                  setThrottleIntervalInput('15');
+                  setFormState((prev) => ({
+                    ...prev,
+                    throttleIntervalMinutes: 15,
+                  }));
+                  return;
+                }
+                const val = parseInt(throttleIntervalInput, 10);
+                const finalVal = isNaN(val) ? 15 : Math.max(1, val);
+                setThrottleIntervalInput(String(finalVal));
                 setFormState((prev) => ({
                   ...prev,
-                  throttleIntervalMinutes: isNaN(val) ? 15 : Math.max(1, val),
+                  throttleIntervalMinutes: finalVal,
                 }));
               }}
             />
@@ -369,14 +468,41 @@ const ConnectAlertsPage: React.FC = () => {
               search={false}
               type="number"
               placeholder="587"
-              value={formState.email.smtpPort || 587}
+              value={smtpPortInput}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const val = parseInt(e.target.value, 10);
+                const raw = e.target.value;
+                setSmtpPortInput(raw);
+                const val = parseInt(raw, 10);
+                if (!isNaN(val)) {
+                  setFormState((prev) => ({
+                    ...prev,
+                    email: {
+                      ...prev.email,
+                      smtpPort: val,
+                    },
+                  }));
+                }
+              }}
+              onBlur={() => {
+                if (smtpPortInput.trim() === '') {
+                  setSmtpPortInput('587');
+                  setFormState((prev) => ({
+                    ...prev,
+                    email: {
+                      ...prev.email,
+                      smtpPort: 587,
+                    },
+                  }));
+                  return;
+                }
+                const val = parseInt(smtpPortInput, 10);
+                const finalVal = isNaN(val) || val <= 0 ? 587 : val;
+                setSmtpPortInput(String(finalVal));
                 setFormState((prev) => ({
                   ...prev,
                   email: {
                     ...prev.email,
-                    smtpPort: isNaN(val) ? 587 : val,
+                    smtpPort: finalVal,
                   },
                 }));
               }}
