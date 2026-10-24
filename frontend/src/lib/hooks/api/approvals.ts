@@ -59,6 +59,9 @@ export interface ApprovalPermissions {
   username: string;
   roles: string[];
   canApprove: boolean;
+  canViewApprovals?: boolean;
+  canManageWorkflowSettings?: boolean;
+  canAccessAlertSettings?: boolean;
 }
 
 const getBaseUrl = () => BASE_PARAMS.basePath || '';
@@ -179,7 +182,14 @@ export const approvalsApi = {
       }
     );
     if (!res.ok) {
-      return { username: '', roles: [], canApprove: true };
+      return {
+        username: '',
+        roles: [],
+        canApprove: true,
+        canViewApprovals: true,
+        canManageWorkflowSettings: true,
+        canAccessAlertSettings: true,
+      };
     }
     return res.json();
   },
@@ -247,12 +257,14 @@ export const handleApprovalRedirect = (
 export function useApprovals(
   clusterName: string,
   status?: ApprovalStatus,
-  type?: ApprovalTargetType
+  type?: ApprovalTargetType,
+  enabled: boolean = true
 ) {
   return useQuery({
     queryKey: ['clusters', clusterName, 'approvals', { status, type }],
     queryFn: () => approvalsApi.getApprovals(clusterName, status, type),
-    refetchInterval: 5000,
+    refetchInterval: enabled ? 5000 : false,
+    enabled,
   });
 }
 

@@ -185,4 +185,20 @@ describe('Approvals Page', () => {
     const deleteBtn = screen.getByRole('button', { name: 'Delete' });
     expect(deleteBtn).toBeInTheDocument();
   });
+
+  it('hides Workflow Settings button when canManageWorkflowSettings is false', () => {
+    (useApprovalPermissions as jest.Mock).mockReturnValue({
+      data: {
+        username: 'dev-user',
+        roles: ['developer'],
+        canApprove: false,
+        canManageWorkflowSettings: false,
+      },
+      isLoading: false,
+    });
+
+    renderComponent();
+
+    expect(screen.queryByRole('button', { name: 'Workflow Settings' })).not.toBeInTheDocument();
+  });
 });

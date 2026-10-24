@@ -15,6 +15,8 @@ import io.kafbat.ui.model.approval.ApprovalRequest;
 import io.kafbat.ui.model.approval.ApprovalStatus;
 import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
+import io.kafbat.ui.model.rbac.Permission;
+import io.kafbat.ui.model.rbac.Resource;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.BrokerService;
 import io.kafbat.ui.service.ConsumerGroupService;
@@ -25,6 +27,7 @@ import io.kafbat.ui.service.MessagesService;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
+import io.kafbat.ui.service.rbac.AccessControlService;
 import io.kafbat.ui.util.KafkaClientSslPropertiesUtil;
 import jakarta.annotation.PostConstruct;
 import java.io.Closeable;
@@ -69,6 +72,7 @@ public class ApprovalService implements Closeable {
   private final BrokerService brokerService;
   private final ConsumerGroupService consumerGroupService;
   private final ConnectAlertProperties alertProperties;
+  private final AccessControlService accessControlService;
 
   // In-memory cache: clusterName -> (requestId -> ApprovalRequest)
   private final Map<String, Map<String, ApprovalRequest>> requestsCache = new ConcurrentHashMap<>();
@@ -101,16 +105,71 @@ public class ApprovalService implements Closeable {
       return false;
     }
 
-    // Auto-approve if user holds a direct apply role (e.g. Architect/Admin)
-    boolean isDirectApply = user.groups() != null && user.groups().stream()
-        .anyMatch(role -> approvalProperties.getDirectApplyRoles().contains(role));
+    return !isDirectApply(user);
+  }
 
-    return !isDirectApply;
+  public boolean isDirectApply(AuthenticatedUser user) {
+    return user.groups() != null && user.groups().stream()
+        .anyMatch(role -> approvalProperties.getDirectApplyRoles().contains(role));
   }
 
   public boolean isApprover(AuthenticatedUser user) {
     return user.groups() != null && user.groups().stream()
         .anyMatch(role -> approvalProperties.getApproverRoles().contains(role));
+  }
+
+  public boolean canManageWorkflowSettings(AuthenticatedUser user) {
+    if (accessControlService != null && !accessControlService.isRbacEnabled()) {
+      return true;
+    }
+    return isApprover(user) || isDirectApply(user);
+  }
+
+  public boolean canAccessApprovals(String clusterName, AuthenticatedUser user) {
+    if (accessControlService != null && !accessControlService.isRbacEnabled()) {
+      return true;
+    }
+    if (isApprover(user) || isDirectApply(user)) {
+      return true;
+    }
+    if (accessControlService == null) {
+      return true;
+    }
+    List<Permission> permissions = accessControlService.getUserPermissions(user, clusterName);
+    if (permissions == null || permissions.isEmpty()) {
+      return false;
+    }
+    return permissions.stream().anyMatch(this::hasMutationAction);
+  }
+
+  public boolean canAccessAlertSettings(AuthenticatedUser user, @Nullable String clusterName) {
+    if (accessControlService != null && !accessControlService.isRbacEnabled()) {
+      return true;
+    }
+    if (isApprover(user) || isDirectApply(user)) {
+      return true;
+    }
+    if (accessControlService == null) {
+      return true;
+    }
+    List<Permission> permissions = accessControlService.getUserPermissions(user, clusterName);
+    if (permissions == null || permissions.isEmpty()) {
+      return false;
+    }
+    return permissions.stream().anyMatch(p ->
+        (p.getResource() == Resource.CONNECT
+            || p.getResource() == Resource.CLUSTERCONFIG
+            || p.getResource() == Resource.APPLICATIONCONFIG)
+            && hasMutationAction(p)
+    );
+  }
+
+  private boolean hasMutationAction(Permission permission) {
+    if (permission.getActions() == null) {
+      return false;
+    }
+    return permission.getActions().stream()
+        .anyMatch(action -> !action.equalsIgnoreCase("view") && !action.equalsIgnoreCase("messages_read"));
   }
 
   public Mono<ApprovalRequest> createRequest(

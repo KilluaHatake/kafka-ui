@@ -51,6 +51,7 @@ class ConnectAlertSettingsControllerTest {
     when(slackClient.sendAlert(any(), any())).thenReturn(Mono.empty());
     when(emailClient.sendAlert(any(), any())).thenReturn(Mono.empty());
     when(approvalService.isApprovalRequired(any(), any())).thenReturn(false);
+    when(approvalService.canAccessAlertSettings(any(), any())).thenReturn(true);
 
     controller = new ConnectAlertSettingsController(
         alertProperties, slackClient, emailClient, approvalService, clustersStorage
@@ -157,5 +158,22 @@ class ConnectAlertSettingsControllerTest {
           verify(emailClient).sendAlert(any(), any());
         })
         .verifyComplete();
+  }
+
+  @Test
+  void testUnauthorizedCannotGetOrUpdateOrTestAlertSettings() {
+    when(approvalService.canAccessAlertSettings(any(), any())).thenReturn(false);
+
+    StepVerifier.create(controller.getSettings())
+        .expectError(org.springframework.security.access.AccessDeniedException.class)
+        .verify();
+
+    StepVerifier.create(controller.updateSettings(new ConnectAlertSettingsDto()))
+        .expectError(org.springframework.security.access.AccessDeniedException.class)
+        .verify();
+
+    StepVerifier.create(controller.sendTestAlert(Map.of()))
+        .expectError(org.springframework.security.access.AccessDeniedException.class)
+        .verify();
   }
 }

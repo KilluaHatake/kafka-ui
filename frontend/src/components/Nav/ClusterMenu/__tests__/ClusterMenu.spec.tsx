@@ -6,6 +6,12 @@ import userEvent from '@testing-library/user-event';
 import { clusterConnectorsPath } from 'lib/paths';
 import { render } from 'lib/testHelpers';
 import { onlineClusterPayload } from 'lib/fixtures/clusters';
+import { useApprovalPermissions } from 'lib/hooks/api/approvals';
+
+jest.mock('lib/hooks/api/approvals', () => ({
+  useApprovals: jest.fn(() => ({ data: [] })),
+  useApprovalPermissions: jest.fn(() => ({ data: { canViewApprovals: true } })),
+}));
 
 /*
  Due to jsdom doesnt know about scrollIntoView
@@ -15,6 +21,9 @@ window.HTMLElement.prototype.scrollIntoView = jest.fn();
 describe('ClusterMenu', () => {
   beforeEach(() => {
     localStorage.clear();
+    (useApprovalPermissions as jest.Mock).mockReturnValue({
+      data: { canViewApprovals: true },
+    });
   });
 
   const setupComponent = (cluster: Cluster, opened?: boolean) => (
@@ -30,6 +39,7 @@ describe('ClusterMenu', () => {
   const getTopics = () => screen.getByTitle('Topics');
   const getConsumers = () => screen.getByTitle('Consumers');
   const getKafkaConnect = () => screen.getByTitle('Kafka Connect');
+  const getApprovals = () => screen.getByTitle('Approvals');
   const getCluster = () => screen.getByText(onlineClusterPayload.name);
 
   const clickChevron = async () => {
@@ -45,11 +55,12 @@ describe('ClusterMenu', () => {
 
     expect(getMenuItems().length).toEqual(1);
     await clickChevron();
-    expect(getMenuItems().length).toEqual(4);
+    expect(getMenuItems().length).toEqual(5);
 
     expect(getBrokers()).toBeInTheDocument();
     expect(getTopics()).toBeInTheDocument();
     expect(getConsumers()).toBeInTheDocument();
+    expect(getApprovals()).toBeInTheDocument();
   });
 
   it('renders cluster menu with correct set of features', async () => {
@@ -65,7 +76,7 @@ describe('ClusterMenu', () => {
     );
     expect(getMenuItems().length).toEqual(1);
     await clickChevron();
-    expect(getMenuItems().length).toEqual(7);
+    expect(getMenuItems().length).toEqual(8);
 
     expect(getBrokers()).toBeInTheDocument();
     expect(getTopics()).toBeInTheDocument();
@@ -73,6 +84,7 @@ describe('ClusterMenu', () => {
     expect(screen.getByTitle('Schema Registry')).toBeInTheDocument();
     expect(getKafkaConnect()).toBeInTheDocument();
     expect(screen.getByTitle('KSQL DB')).toBeInTheDocument();
+    expect(getApprovals()).toBeInTheDocument();
   });
 
   it('renders open cluster menu', () => {
@@ -80,11 +92,12 @@ describe('ClusterMenu', () => {
       initialEntries: [clusterConnectorsPath(onlineClusterPayload.name)],
     });
 
-    expect(getMenuItems().length).toEqual(4);
+    expect(getMenuItems().length).toEqual(5);
     expect(getCluster()).toBeInTheDocument();
     expect(getBrokers()).toBeInTheDocument();
     expect(getTopics()).toBeInTheDocument();
     expect(getConsumers()).toBeInTheDocument();
+    expect(getApprovals()).toBeInTheDocument();
   });
 
   it('makes Kafka Connect link active', async () => {
@@ -97,11 +110,23 @@ describe('ClusterMenu', () => {
     );
     expect(getMenuItems().length).toEqual(1);
     await clickChevron();
-    expect(getMenuItems().length).toEqual(5);
+    expect(getMenuItems().length).toEqual(6);
 
     const kafkaConnect = getKafkaConnect();
     expect(kafkaConnect).toBeInTheDocument();
 
     expect(getKafkaConnect()).toHaveClass('active');
+  });
+
+  it('hides Approvals item when user has no approval viewing permissions', async () => {
+    (useApprovalPermissions as jest.Mock).mockReturnValue({
+      data: { canViewApprovals: false },
+    });
+
+    render(setupComponent(onlineClusterPayload));
+    await clickChevron();
+
+    expect(getMenuItems().length).toEqual(4);
+    expect(screen.queryByTitle('Approvals')).not.toBeInTheDocument();
   });
 });

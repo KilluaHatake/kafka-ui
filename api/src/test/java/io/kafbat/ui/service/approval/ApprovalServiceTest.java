@@ -20,6 +20,9 @@ import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
+import io.kafbat.ui.service.rbac.AccessControlService;
+import io.kafbat.ui.model.rbac.Permission;
+import io.kafbat.ui.model.rbac.Resource;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +43,7 @@ class ApprovalServiceTest {
   private io.kafbat.ui.service.BrokerService brokerService;
   private io.kafbat.ui.service.ConsumerGroupService consumerGroupService;
   private io.kafbat.ui.config.ConnectAlertProperties alertProperties;
+  private AccessControlService accessControlService;
   private ApprovalService approvalService;
 
   private KafkaCluster cluster;
@@ -66,6 +70,8 @@ class ApprovalServiceTest {
     brokerService = mock(io.kafbat.ui.service.BrokerService.class);
     consumerGroupService = mock(io.kafbat.ui.service.ConsumerGroupService.class);
     alertProperties = new io.kafbat.ui.config.ConnectAlertProperties();
+    accessControlService = mock(AccessControlService.class);
+    when(accessControlService.isRbacEnabled()).thenReturn(true);
 
     cluster = KafkaCluster.builder().name("local-cluster").build();
 
@@ -79,7 +85,8 @@ class ApprovalServiceTest {
         notificationService,
         brokerService,
         consumerGroupService,
-        alertProperties
+        alertProperties,
+        accessControlService
     );
   }
 
@@ -225,5 +232,46 @@ class ApprovalServiceTest {
     StepVerifier.create(approvalService.rejectRequest(cluster, request.getId(), devUser, "No"))
         .expectError(AccessDeniedException.class)
         .verify();
+  }
+
+  @Test
+  void testRbacPermissionsChecksForDifferentRoles() {
+    when(accessControlService.isRbacEnabled()).thenReturn(true);
+
+    AuthenticatedUser supportUser = new AuthenticatedUser("support@company.com", List.of("Support"));
+    Permission supportTopicPerm = new Permission();
+    supportTopicPerm.setResource("TOPIC");
+    supportTopicPerm.setActions(List.of("view", "messages_read"));
+    Permission supportConnectPerm = new Permission();
+    supportConnectPerm.setResource("CONNECT");
+    supportConnectPerm.setActions(List.of("view"));
+    when(accessControlService.getUserPermissions(supportUser, "local-cluster"))
+        .thenReturn(List.of(supportTopicPerm, supportConnectPerm));
+
+    assertThat(approvalService.isApprover(supportUser)).isFalse();
+    assertThat(approvalService.canManageWorkflowSettings(supportUser)).isFalse();
+    assertThat(approvalService.canAccessApprovals("local-cluster", supportUser)).isFalse();
+    assertThat(approvalService.canAccessAlertSettings(supportUser, "local-cluster")).isFalse();
+
+    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    Permission devTopicPerm = new Permission();
+    devTopicPerm.setResource("TOPIC");
+    devTopicPerm.setActions(List.of("all"));
+    Permission devConnectPerm = new Permission();
+    devConnectPerm.setResource("CONNECT");
+    devConnectPerm.setActions(List.of("all"));
+    when(accessControlService.getUserPermissions(devUser, "local-cluster"))
+        .thenReturn(List.of(devTopicPerm, devConnectPerm));
+
+    assertThat(approvalService.isApprover(devUser)).isFalse();
+    assertThat(approvalService.canManageWorkflowSettings(devUser)).isFalse();
+    assertThat(approvalService.canAccessApprovals("local-cluster", devUser)).isTrue();
+    assertThat(approvalService.canAccessAlertSettings(devUser, "local-cluster")).isTrue();
+
+    AuthenticatedUser archUser = new AuthenticatedUser("arch@company.com", List.of("Architect"));
+    assertThat(approvalService.isApprover(archUser)).isTrue();
+    assertThat(approvalService.canManageWorkflowSettings(archUser)).isTrue();
+    assertThat(approvalService.canAccessApprovals("local-cluster", archUser)).isTrue();
+    assertThat(approvalService.canAccessAlertSettings(archUser, "local-cluster")).isTrue();
   }
 }

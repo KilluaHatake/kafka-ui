@@ -24,6 +24,7 @@ import { GlobalSettingsContext } from 'components/contexts/GlobalSettingsContext
 import New from 'components/Connect/New/New';
 import SuspenseQueryComponent from 'components/common/SuspenseQueryComponent/SuspenseQueryComponent';
 import DetailsPage from 'components/Connect/Details/DetailsPage';
+import { useApprovalPermissions } from 'lib/hooks/api/approvals';
 
 const Brokers = React.lazy(() => import('components/Brokers/Brokers'));
 const Topics = React.lazy(() => import('components/Topics/Topics'));
@@ -43,6 +44,8 @@ const Approvals = React.lazy(() => import('components/Approvals/Approvals'));
 const ClusterPage: React.FC = () => {
   const { clusterName } = useAppParams<ClusterNameRoute>();
   const appInfo = React.useContext(GlobalSettingsContext);
+  const permissionsQuery = useApprovalPermissions(clusterName);
+  const canViewApprovals = permissionsQuery?.data ? permissionsQuery.data.canViewApprovals !== false : true;
 
   const { data, isFetched } = useClusters();
   const contextValue = React.useMemo(() => {
@@ -131,10 +134,12 @@ const ClusterPage: React.FC = () => {
                 element={<AclPage />}
               />
             )}
-            <Route
-              path={getNonExactPath(clusterApprovalsRelativePath)}
-              element={<Approvals />}
-            />
+            {canViewApprovals && (
+              <Route
+                path={getNonExactPath(clusterApprovalsRelativePath)}
+                element={<Approvals />}
+              />
+            )}
             {appInfo.hasDynamicConfig && (
               <Route
                 path={getNonExactPath(clusterConfigRelativePath)}

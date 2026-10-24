@@ -119,7 +119,7 @@ public class AccessControlService {
     return context.isAccessible(getUserPermissions(user, context.cluster()));
   }
 
-  private List<Permission> getUserPermissions(AuthenticatedUser user, @Nullable String clusterName) {
+  public List<Permission> getUserPermissions(AuthenticatedUser user, @Nullable String clusterName) {
     List<Role> filteredRoles = properties.getRoles()
             .stream()
             .filter(filterRole(user))

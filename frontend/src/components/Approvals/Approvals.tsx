@@ -57,8 +57,10 @@ const Approvals: React.FC = () => {
   const [isRejectOpen, setIsRejectOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const { data: permissions } = useApprovalPermissions(clusterName);
+  const permissionsQuery = useApprovalPermissions(clusterName);
+  const permissions = permissionsQuery?.data;
   const canApprove = permissions?.canApprove ?? true;
+  const canManageWorkflowSettings = permissions ? permissions.canManageWorkflowSettings !== false : true;
 
   const { data: requests = [], isLoading, refetch } = useApprovals(
     clusterName,
@@ -127,13 +129,15 @@ const Approvals: React.FC = () => {
           </S.Subtitle>
         </div>
         <S.HeaderActions>
-          <Button
-            buttonType="secondary"
-            buttonSize="M"
-            onClick={() => setIsSettingsOpen(true)}
-          >
-            Workflow Settings
-          </Button>
+          {canManageWorkflowSettings && (
+            <Button
+              buttonType="secondary"
+              buttonSize="M"
+              onClick={() => setIsSettingsOpen(true)}
+            >
+              Workflow Settings
+            </Button>
+          )}
           <Button
             buttonType="primary"
             buttonSize="M"

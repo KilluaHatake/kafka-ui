@@ -19,6 +19,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -41,7 +42,14 @@ public class ConnectAlertSettingsController {
 
   @GetMapping("/settings")
   public Mono<ResponseEntity<ConnectAlertSettingsDto>> getSettings() {
-    return Mono.just(ResponseEntity.ok(ConnectAlertSettingsDto.fromProperties(alertProperties)));
+    return AccessControlService.getUser()
+        .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+        .flatMap(user -> {
+          if (!approvalService.canAccessAlertSettings(user, null)) {
+            return Mono.error(new AccessDeniedException("User is not authorized to access connect alert settings"));
+          }
+          return Mono.just(ResponseEntity.ok(ConnectAlertSettingsDto.fromProperties(alertProperties)));
+        });
   }
 
   @PutMapping("/settings")
@@ -51,6 +59,9 @@ public class ConnectAlertSettingsController {
     return AccessControlService.getUser()
         .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
         .flatMap(user -> {
+          if (!approvalService.canAccessAlertSettings(user, null)) {
+            return Mono.error(new AccessDeniedException("User is not authorized to modify connect alert settings"));
+          }
           if (approvalService.isApprovalRequired(ApprovalTargetType.ALERT_SETTINGS_UPDATE, user)) {
             String clusterName = clustersStorage != null && !clustersStorage.getKafkaClusters().isEmpty()
                 ? clustersStorage.getKafkaClusters().iterator().next().getName()
@@ -148,42 +159,50 @@ public class ConnectAlertSettingsController {
   public Mono<ResponseEntity<Map<String, Object>>> sendTestAlert(
       @RequestBody(required = false) Map<String, String> request
   ) {
-    String channel = request != null && request.containsKey("channel")
-        ? request.get("channel").toLowerCase()
-        : "all";
+    return AccessControlService.getUser()
+        .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+        .flatMap(user -> {
+          if (!approvalService.canAccessAlertSettings(user, null)) {
+            return Mono.error(new AccessDeniedException("User is not authorized to send test alerts"));
+          }
 
-    ConnectAlertPayload testPayload = new ConnectAlertPayload(
-        "local-cluster",
-        "connect-cluster",
-        "sample-test-connector",
-        "TestAlertVerification",
-        Instant.now(),
-        "Verification test alert triggered from Kafbat UI. Connect error notifications are operating normally."
-    );
+          String channel = request != null && request.containsKey("channel")
+              ? request.get("channel").toLowerCase()
+              : "all";
 
-    Mono<Void> testMono;
-    if ("slack".equals(channel)) {
-      testMono = slackClient.sendAlert(alertProperties.getSlack(), testPayload);
-    } else if ("email".equals(channel)) {
-      testMono = emailClient.sendAlert(alertProperties.getEmail(), testPayload);
-    } else {
-      testMono = Mono.when(
-          slackClient.sendAlert(alertProperties.getSlack(), testPayload),
-          emailClient.sendAlert(alertProperties.getEmail(), testPayload)
-      );
-    }
+          ConnectAlertPayload testPayload = new ConnectAlertPayload(
+              "local-cluster",
+              "connect-cluster",
+              "sample-test-connector",
+              "TestAlertVerification",
+              Instant.now(),
+              "Verification test alert triggered from Kafbat UI. Connect error notifications are operating normally."
+          );
 
-    return testMono
-        .thenReturn(ResponseEntity.ok(Map.<String, Object>of(
-            "success", true,
-            "message", "Test alert dispatched successfully to " + channel
-        )))
-        .onErrorResume(th -> {
-          log.error("Failed to dispatch test alert", th);
-          return Mono.just(ResponseEntity.ok(Map.<String, Object>of(
-              "success", false,
-              "message", "Failed to dispatch test alert: " + th.getMessage()
-          )));
+          Mono<Void> testMono;
+          if ("slack".equals(channel)) {
+            testMono = slackClient.sendAlert(alertProperties.getSlack(), testPayload);
+          } else if ("email".equals(channel)) {
+            testMono = emailClient.sendAlert(alertProperties.getEmail(), testPayload);
+          } else {
+            testMono = Mono.when(
+                slackClient.sendAlert(alertProperties.getSlack(), testPayload),
+                emailClient.sendAlert(alertProperties.getEmail(), testPayload)
+            );
+          }
+
+          return testMono
+              .thenReturn(ResponseEntity.ok(Map.<String, Object>of(
+                  "success", true,
+                  "message", "Test alert dispatched successfully to " + channel
+              )))
+              .onErrorResume(th -> {
+                log.error("Failed to dispatch test alert", th);
+                return Mono.just(ResponseEntity.ok(Map.<String, Object>of(
+                    "success", false,
+                    "message", "Failed to dispatch test alert: " + th.getMessage()
+                )));
+              });
         });
   }
 }

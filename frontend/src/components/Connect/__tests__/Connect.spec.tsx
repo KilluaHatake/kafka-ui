@@ -4,6 +4,7 @@ import { screen } from '@testing-library/react';
 import Connect from 'components/Connect/Connect';
 import { getNonExactPath, kafkaConnectPath } from 'lib/paths';
 import { useConnects } from 'lib/hooks/api/kafkaConnect';
+import { useApprovalPermissions } from 'lib/hooks/api/approvals';
 
 const ConnectCompText = {
   new: 'New Page',
@@ -22,6 +23,11 @@ jest.mock('components/Connect/Details/DetailsPage', () => () => (
 ));
 jest.mock('lib/hooks/api/kafkaConnect', () => ({
   useConnects: jest.fn(),
+}));
+jest.mock('lib/hooks/api/approvals', () => ({
+  useApprovalPermissions: jest.fn(() => ({
+    data: { canAccessAlertSettings: true },
+  })),
 }));
 
 describe('Connect', () => {
@@ -60,5 +66,17 @@ describe('Connect', () => {
       name: 'Alert Settings',
     });
     expect(alertsNavigation).toBeInTheDocument();
+  });
+
+  it('hides Alert Settings tab when user has no access to alert settings', () => {
+    (useApprovalPermissions as jest.Mock).mockReturnValue({
+      data: { canAccessAlertSettings: false },
+    });
+
+    renderComponent(kafkaConnectPath('my-cluster'), kafkaConnectPath());
+
+    expect(
+      screen.queryByRole('link', { name: 'Alert Settings' })
+    ).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,9 @@
 package io.kafbat.ui.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.model.approval.ApprovalSettingsDto;
@@ -9,6 +11,7 @@ import io.kafbat.ui.service.approval.ApprovalService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 import reactor.test.StepVerifier;
 
 class ApprovalControllerTest {
@@ -21,6 +24,8 @@ class ApprovalControllerTest {
   void setUp() {
     approvalProperties = new ApprovalProperties();
     approvalService = mock(ApprovalService.class);
+    when(approvalService.canManageWorkflowSettings(any())).thenReturn(true);
+    when(approvalService.canAccessApprovals(any(), any())).thenReturn(true);
     controller = new ApprovalController(approvalService, approvalProperties);
   }
 
@@ -67,5 +72,18 @@ class ApprovalControllerTest {
           assertThat(body.getApproverRoles()).containsExactly("Admin", "Lead");
         })
         .verifyComplete();
+  }
+
+  @Test
+  void testUnauthorizedCannotGetOrUpdateApprovalSettings() {
+    when(approvalService.canManageWorkflowSettings(any())).thenReturn(false);
+
+    StepVerifier.create(controller.getApprovalSettings())
+        .expectError(AccessDeniedException.class)
+        .verify();
+
+    StepVerifier.create(controller.updateApprovalSettings(ApprovalSettingsDto.builder().enabled(false).build()))
+        .expectError(AccessDeniedException.class)
+        .verify();
   }
 }
