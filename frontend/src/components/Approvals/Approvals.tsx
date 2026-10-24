@@ -299,10 +299,12 @@ const Approvals: React.FC = () => {
         onConfirmReject={handleConfirmReject}
       />
 
-      <ApprovalSettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      {canManageWorkflowSettings && isSettingsOpen && (
+        <ApprovalSettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
     </S.Wrapper>
   );
 };

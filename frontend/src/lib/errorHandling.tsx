@@ -101,12 +101,19 @@ export const showServerError = async (
     'An error occurred';
 
   // Check if this was an approval required notification
-  if (
+  const isApprovalNotification =
     status === 202 ||
     body?.code === 4022 ||
     resp?.code === 4022 ||
-    (typeof message === 'string' && message.toLowerCase().includes('approval'))
-  ) {
+    (status !== 403 &&
+      status !== 401 &&
+      status !== 404 &&
+      status !== 500 &&
+      typeof message === 'string' &&
+      (message.toLowerCase().includes('submitted for approval') ||
+        message.toLowerCase().includes('approval required')));
+
+  if (isApprovalNotification) {
     showAlert('warning', {
       id: resp?.url || 'approval-sent',
       title: 'Sent for Approval',

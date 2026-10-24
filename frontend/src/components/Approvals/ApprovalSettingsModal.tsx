@@ -14,7 +14,7 @@ interface Props {
 }
 
 const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { data: settings, isLoading } = useApprovalSettings();
+  const { data: settings, isLoading } = useApprovalSettings(isOpen);
   const updateSettings = useUpdateApprovalSettings();
 
   const [formState, setFormState] = useState<ApprovalProperties>({
@@ -60,6 +60,10 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       </Button>
     </div>
   );
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <Modal
