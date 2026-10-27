@@ -105,6 +105,7 @@ public class KafkaConnectController extends AbstractController implements KafkaC
             .flatMap(user -> {
               if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, user)) {
                 return connector.flatMap(newConn -> {
+                  @SuppressWarnings("unchecked")
                   Map<String, Object> cfgMap = newConn.getConfig() instanceof Map<?, ?> m
                       ? (Map<String, Object>) m
                       : Map.of();

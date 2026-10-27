@@ -13,11 +13,12 @@ import io.kafbat.ui.util.DynamicConfigOperations;
 import java.util.Optional;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.ReportingPolicy;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface DynamicConfigMapper {
 
   DynamicConfigOperations.PropertiesStructure fromDto(ApplicationConfigPropertiesDTO dto);

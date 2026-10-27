@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.admin.QuorumInfo;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 @Mapper(
     componentModel = "spring"
@@ -36,6 +37,8 @@ public interface QuorumInfoMapper {
     );
   }
 
+  @Mapping(target = "nodeId", ignore = true)
+  @Mapping(target = "endpoints", ignore = true)
   InternalQuorumInfo.Node toNode(QuorumInfo.Node node);
 
 }

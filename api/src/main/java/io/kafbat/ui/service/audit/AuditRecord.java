@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import lombok.SneakyThrows;
 import org.springframework.security.access.AccessDeniedException;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 record AuditRecord(String timestamp,
                    String username,
                    String clusterName,
@@ -22,10 +23,6 @@ record AuditRecord(String timestamp,
                    OperationResult result) {
 
   static final JsonMapper MAPPER = new JsonMapper();
-
-  static {
-    MAPPER.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-  }
 
   @SneakyThrows
   String toJson() {

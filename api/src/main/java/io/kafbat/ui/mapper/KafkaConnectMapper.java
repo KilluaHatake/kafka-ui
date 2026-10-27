@@ -46,6 +46,7 @@ public interface KafkaConnectMapper {
   @Mapping(target = "status", ignore = true)
   @Mapping(target = "connect", ignore = true)
   @Mapping(target = "topics", ignore = true)
+  @Mapping(target = "consumer", ignore = true)
   ConnectorDTO fromClient(Connector connector);
 
   default ConnectorDTO fromClient(Connector connector,
