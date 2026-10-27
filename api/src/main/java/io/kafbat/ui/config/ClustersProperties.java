@@ -158,6 +158,7 @@ public class ClustersProperties {
     String password;
     String keystoreLocation;
     String keystorePassword;
+    @Builder.Default
     String consumerNamePattern = "connect-%s";
   }
 

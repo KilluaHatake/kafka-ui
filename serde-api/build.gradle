@@ -15,13 +15,15 @@ tasks.register('javadocJar', Jar) {
     from javadoc.destinationDir
 }
 
+javadoc {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
 dependencies {
     implementation libs.kafka.clients
 }
 
-artifacts {
-    archives sourceJar, javadocJar
-}
+assemble.dependsOn sourceJar, javadocJar
 
 if (release) {
     signing {

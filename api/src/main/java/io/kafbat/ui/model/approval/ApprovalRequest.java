@@ -15,13 +15,10 @@ import lombok.SneakyThrows;
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApprovalRequest {
 
   private static final JsonMapper MAPPER = new JsonMapper();
-
-  static {
-    MAPPER.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-  }
 
   private String id;
   private String clusterName;
