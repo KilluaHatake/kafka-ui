@@ -52,6 +52,15 @@ const New: React.FC = () => {
       ) {
         return;
       }
+      if (!res?.name) {
+        handleApprovalRedirect(
+          { status: 202, message: 'Topic creation request submitted to approval queue.' },
+          clusterName,
+          navigate,
+          'Topic creation request submitted to approval queue.'
+        );
+        return;
+      }
       navigate(`../${data.name}`);
     } catch (e: any) {
       if (

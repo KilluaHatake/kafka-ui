@@ -90,6 +90,15 @@ const Edit: React.FC = () => {
       ) {
         return;
       }
+      if (!res?.name) {
+        handleApprovalRedirect(
+          { status: 202, message: 'Topic configuration update submitted to approval queue.' },
+          clusterName,
+          navigate,
+          'Topic configuration update submitted to approval queue.'
+        );
+        return;
+      }
       navigate('../');
     } catch (e: any) {
       if (

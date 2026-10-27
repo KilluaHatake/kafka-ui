@@ -86,6 +86,7 @@ describe('New', () => {
     ).toBeInTheDocument();
   });
   it('submits valid form', async () => {
+    createTopicMock.mockResolvedValueOnce({ name: topicName });
     renderComponent(clusterTopicNewPath(clusterName));
     await userEvent.type(screen.getByPlaceholderText('Topic Name'), topicName);
     await userEvent.type(
@@ -95,5 +96,22 @@ describe('New', () => {
     await userEvent.click(screen.getByText('Create topic'));
     expect(createTopicMock).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenLastCalledWith(`../${topicName}`);
+  });
+
+  it('redirects to approvals when approval is required', async () => {
+    createTopicMock.mockResolvedValueOnce({
+      status: 202,
+      code: 4022,
+      message: 'Topic creation request submitted for approval',
+    });
+    renderComponent(clusterTopicNewPath(clusterName));
+    await userEvent.type(screen.getByPlaceholderText('Topic Name'), topicName);
+    await userEvent.type(
+      screen.getByLabelText('Number of Partitions *'),
+      minValue
+    );
+    await userEvent.click(screen.getByText('Create topic'));
+    expect(createTopicMock).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenLastCalledWith('/ui/clusters/local/approvals');
   });
 });

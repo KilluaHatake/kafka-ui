@@ -233,14 +233,14 @@ export function useDeleteApproval(clusterName: string) {
 export const isApprovalResponse = (res: any): boolean => {
   if (!res) return false;
   if (res.status === 202 || res.code === 4022) return true;
+  if (res.response && (res.response.status === 202 || res.response.code === 4022)) return true;
+  if (res.data && (res.data.status === 202 || res.data.code === 4022)) return true;
+  if (res.approvalId || res.approval_id) return true;
+  const msg = res.message || res.response?.message || res.data?.message;
   if (
-    res.status !== 403 &&
-    res.status !== 401 &&
-    res.status !== 404 &&
-    res.status !== 500 &&
-    typeof res.message === 'string' &&
-    (res.message.toLowerCase().includes('submitted for approval') ||
-      res.message.toLowerCase().includes('approval required'))
+    typeof msg === 'string' &&
+    (msg.toLowerCase().includes('submitted for approval') ||
+      msg.toLowerCase().includes('approval required'))
   ) {
     return true;
   }
@@ -254,9 +254,14 @@ export const handleApprovalRedirect = (
   defaultMessage = 'Request submitted to approval queue.'
 ): boolean => {
   if (isApprovalResponse(resOrError)) {
+    const msg =
+      resOrError?.message ||
+      resOrError?.response?.message ||
+      resOrError?.data?.message ||
+      defaultMessage;
     showAlert('warning', {
       title: 'Sent for Approval',
-      message: resOrError?.message || defaultMessage,
+      message: msg,
     });
     navigate(clusterApprovalsPath(clusterName));
     return true;
