@@ -2,6 +2,7 @@ package io.kafbat.ui.service.approval;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.ConnectAlertProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
@@ -24,6 +25,7 @@ import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.ConsumerGroupService;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.MessagesService;
+import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
@@ -38,16 +40,19 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
@@ -56,11 +61,16 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ApprovalService implements Closeable {
+
+  private static final Duration REACTIVE_TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration BLOCK_TIMEOUT = Duration.ofSeconds(10);
+  private static final Duration TOPIC_BLOCK_TIMEOUT = Duration.ofSeconds(5);
 
   private final ApprovalProperties approvalProperties;
   private final ClustersStorage clustersStorage;
@@ -495,32 +505,80 @@ public class ApprovalService implements Closeable {
   }
 
   private void initTopicAndProducer(KafkaCluster cluster) {
-    String topicName = approvalProperties.getTopic();
-    try {
-      adminClientService.get(cluster)
-          .flatMap(ac -> ac.describeTopic(topicName)
-              .onErrorResume(th -> {
-                log.info("Creating approval topic '{}' for cluster '{}'", topicName, cluster.getName());
-                Map<String, String> topicConfig =
-                    Map.of(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-                return ac.createTopic(topicName, approvalProperties.getPartitions(), null, topicConfig)
-                    .then(Mono.empty());
-              })
-          )
-          .timeout(Duration.ofSeconds(10))
-          .subscribe(
-              s -> {
-                log.debug("Approval topic checked for cluster '{}'", cluster.getName());
-                replayRequestsFromTopic(cluster);
-              },
-              th -> log.warn("Could not check/create approval topic '{}' for cluster '{}'",
-                  topicName, cluster.getName(), th)
-          );
+    if (!approvalProperties.isEnabled()) {
+      return;
+    }
+    String topicName = Optional.ofNullable(approvalProperties.getTopic())
+        .orElse(ApprovalProperties.DEFAULT_APPROVAL_TOPIC);
 
-      var producer = MessagesService.createProducer(cluster, Map.of());
-      producers.put(cluster.getName(), producer);
+    Supplier<ReactiveAdminClient> adminClientSupplier = () -> adminClientService.get(cluster)
+        .timeout(REACTIVE_TIMEOUT)
+        .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+            .maxBackoff(Duration.ofSeconds(10))
+        )
+        .block(BLOCK_TIMEOUT);
+
+    boolean topicReady = createTopicIfNeeded(cluster, adminClientSupplier, topicName);
+    if (topicReady) {
+      try {
+        var producer = MessagesService.createProducer(cluster, Map.of(
+            ProducerConfig.COMPRESSION_TYPE_CONFIG, "gzip"
+        ));
+        producers.put(cluster.getName(), producer);
+        replayRequestsFromTopic(cluster);
+      } catch (Exception e) {
+        log.warn("Error initializing approval producer for cluster '{}'", cluster.getName(), e);
+      }
+    } else {
+      log.warn("Approval topic '{}' could not be verified or created for cluster '{}'",
+          topicName, cluster.getName());
+    }
+  }
+
+  @VisibleForTesting
+  boolean createTopicIfNeeded(KafkaCluster cluster,
+                              Supplier<ReactiveAdminClient> acSupplier,
+                              String approvalTopicName) {
+    ReactiveAdminClient ac;
+    try {
+      ac = acSupplier.get();
     } catch (Exception e) {
-      log.warn("Error initializing approval producer for cluster '{}'", cluster.getName(), e);
+      log.warn("Error while connecting to cluster '{}' to create approval topic '{}'",
+          cluster.getName(), approvalTopicName, e);
+      return false;
+    }
+
+    try {
+      boolean topicExists = Objects.requireNonNull(ac.listTopics(true).block(TOPIC_BLOCK_TIMEOUT))
+          .contains(approvalTopicName);
+
+      if (topicExists) {
+        log.debug("Approval topic '{}' already exists for cluster '{}'", approvalTopicName, cluster.getName());
+        return true;
+      }
+    } catch (Exception e) {
+      log.warn("Error while checking existence of approval topic '{}' for cluster '{}'",
+          approvalTopicName, cluster.getName(), e);
+      return false;
+    }
+
+    try {
+      Map<String, String> topicConfig = new HashMap<>();
+      topicConfig.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+      Optional.ofNullable(approvalProperties.getTopicProperties())
+          .ifPresent(topicConfig::putAll);
+
+      int topicPartitions = approvalProperties.getPartitions() > 0
+          ? approvalProperties.getPartitions()
+          : 1;
+
+      log.info("Creating approval topic '{}' for cluster '{}'", approvalTopicName, cluster.getName());
+      ac.createTopic(approvalTopicName, topicPartitions, null, topicConfig).block(TOPIC_BLOCK_TIMEOUT);
+      log.info("Approval topic '{}' created for cluster '{}'", approvalTopicName, cluster.getName());
+      return true;
+    } catch (Exception e) {
+      log.warn("Error creating approval topic '{}' for cluster '{}'", approvalTopicName, cluster.getName(), e);
+      return false;
     }
   }
 

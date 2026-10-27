@@ -18,12 +18,14 @@ import io.kafbat.ui.model.rbac.Permission;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.KafkaConnectService;
+import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
 import io.kafbat.ui.service.rbac.AccessControlService;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -272,5 +274,25 @@ class ApprovalServiceTest {
     assertThat(approvalService.canManageWorkflowSettings(archUser)).isTrue();
     assertThat(approvalService.canAccessApprovals("local-cluster", archUser)).isTrue();
     assertThat(approvalService.canAccessAlertSettings(archUser, "local-cluster")).isTrue();
+  }
+
+  @Test
+  void createTopicIfNeededReturnsTrueWhenTopicAlreadyExists() {
+    ReactiveAdminClient ac = mock(ReactiveAdminClient.class);
+    when(ac.listTopics(true)).thenReturn(Mono.just(Set.of("__kui-approval-requests")));
+
+    boolean result = approvalService.createTopicIfNeeded(cluster, () -> ac, "__kui-approval-requests");
+    assertThat(result).isTrue();
+  }
+
+  @Test
+  void createTopicIfNeededCreatesTopicWhenNotExists() {
+    ReactiveAdminClient ac = mock(ReactiveAdminClient.class);
+    when(ac.listTopics(true)).thenReturn(Mono.just(Set.of()));
+    when(ac.createTopic(eq("__kui-approval-requests"), eq(1), any(), any())).thenReturn(Mono.empty());
+
+    boolean result = approvalService.createTopicIfNeeded(cluster, () -> ac, "__kui-approval-requests");
+    assertThat(result).isTrue();
+    verify(ac).createTopic(eq("__kui-approval-requests"), eq(1), any(), any());
   }
 }
