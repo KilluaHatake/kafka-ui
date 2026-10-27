@@ -46,6 +46,7 @@ public class ApprovalController extends AbstractController {
             return Mono.error(new AccessDeniedException("User is not authorized to view approval requests"));
           }
           return approvalService.getRequests(clusterName, status, type)
+              .map(approvalService::sanitizeForDisplay)
               .collectList()
               .map(ResponseEntity::ok);
         });
@@ -64,6 +65,7 @@ public class ApprovalController extends AbstractController {
             return Mono.error(new AccessDeniedException("User is not authorized to view approval requests"));
           }
           return approvalService.getRequest(clusterName, id)
+              .map(approvalService::sanitizeForDisplay)
               .map(ResponseEntity::ok);
         });
   }
@@ -153,6 +155,15 @@ public class ApprovalController extends AbstractController {
             approvalProperties.setRequireAlertSettingsUpdates(newSettings.isRequireAlertSettingsUpdates());
             approvalProperties.setRequireConsumerGroupDelete(newSettings.isRequireConsumerGroupDelete());
             approvalProperties.setRequireConnectorResetOffsets(newSettings.isRequireConnectorResetOffsets());
+            approvalProperties.setAlertNotificationsEnabled(newSettings.isAlertNotificationsEnabled());
+            approvalProperties.setSendSlackAlerts(newSettings.isSendSlackAlerts());
+            approvalProperties.setSendEmailAlerts(newSettings.isSendEmailAlerts());
+            if (newSettings.getSlackWebhookUrl() != null) {
+              approvalProperties.setSlackWebhookUrl(newSettings.getSlackWebhookUrl());
+            }
+            if (newSettings.getSlackChannel() != null) {
+              approvalProperties.setSlackChannel(newSettings.getSlackChannel());
+            }
             if (newSettings.getDirectApplyRoles() != null) {
               approvalProperties.setDirectApplyRoles(newSettings.getDirectApplyRoles());
             }

@@ -23,8 +23,11 @@ jest.mock('lib/hooks/api/approvals', () => ({
   useUpdateApprovalSettings: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
 }));
 
-jest.mock('components/common/DiffViewer/DiffViewer', () => () => (
-  <div data-testid="diff-viewer">DiffViewer</div>
+jest.mock('components/common/DiffViewer/DiffViewer', () => ({ value }: { value: [string, string] }) => (
+  <div data-testid="diff-viewer">
+    <div data-testid="diff-old">{value[0]}</div>
+    <div data-testid="diff-new">{value[1]}</div>
+  </div>
 ));
 
 const mockRequests: ApprovalRequest[] = [
@@ -38,7 +41,8 @@ const mockRequests: ApprovalRequest[] = [
     status: 'PENDING',
     createdAt: '2026-10-22T10:00:00Z',
     updatedAt: '2026-10-22T10:00:00Z',
-    newConfig: { 'cleanup.policy': 'compact' },
+    newConfig: { 'cleanup.policy': 'compact', 'ssl.keystore.password': 'cleartext-secret' },
+    metadata: { 'api.token': 'secret-token' },
   },
   {
     id: 'req-2',
@@ -137,7 +141,7 @@ describe('Approvals Page', () => {
     expect(mockApproveMutate).toHaveBeenCalledWith('req-1', expect.any(Object));
   });
 
-  it('opens details modal when clicking Diff / Details', () => {
+  it('opens details modal when clicking Diff / Details and masks sensitive credentials', () => {
     renderComponent();
 
     const diffButtons = screen.getAllByRole('button', { name: 'Diff / Details' });
@@ -146,6 +150,10 @@ describe('Approvals Page', () => {
     expect(screen.getByText('Current Configuration')).toBeInTheDocument();
     expect(screen.getByText('Proposed Configuration')).toBeInTheDocument();
     expect(screen.getByTestId('diff-viewer')).toBeInTheDocument();
+    expect(screen.getByTestId('diff-new')).toHaveTextContent('"ssl.keystore.password": "******"');
+    expect(screen.queryByText('cleartext-secret')).not.toBeInTheDocument();
+    expect(screen.getByText(/"api\.token":\s*"\*\*\*\*\*\*"/)).toBeInTheDocument();
+    expect(screen.queryByText('secret-token')).not.toBeInTheDocument();
   });
 
   it('opens reject modal and confirms rejection', () => {

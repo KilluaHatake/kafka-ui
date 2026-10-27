@@ -16,6 +16,28 @@ interface Props {
   isApprover?: boolean;
 }
 
+const SENSITIVE_KEY_PATTERN =
+  /(password|secret|token|credentials|key|passphrase|jaas|auth)/i;
+
+const maskSensitiveData = (data: any): any => {
+  if (data === null || data === undefined) return data;
+  if (Array.isArray(data)) {
+    return data.map(maskSensitiveData);
+  }
+  if (typeof data === 'object') {
+    const masked: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (SENSITIVE_KEY_PATTERN.test(key) && typeof value !== 'object') {
+        masked[key] = '******';
+      } else {
+        masked[key] = maskSensitiveData(value);
+      }
+    }
+    return masked;
+  }
+  return data;
+};
+
 const ApprovalDetailsModal: React.FC<Props> = ({
   request,
   isOpen,
@@ -27,16 +49,20 @@ const ApprovalDetailsModal: React.FC<Props> = ({
 }) => {
   if (!request) return null;
 
-  const oldJson = request.oldConfig
-    ? JSON.stringify(request.oldConfig, null, 2)
+  const sanitizedOldConfig = maskSensitiveData(request.oldConfig);
+  const sanitizedNewConfig = maskSensitiveData(request.newConfig);
+  const sanitizedMetadata = maskSensitiveData(request.metadata);
+
+  const oldJson = sanitizedOldConfig
+    ? JSON.stringify(sanitizedOldConfig, null, 2)
     : '{}';
-  const newJson = request.newConfig
-    ? JSON.stringify(request.newConfig, null, 2)
+  const newJson = sanitizedNewConfig
+    ? JSON.stringify(sanitizedNewConfig, null, 2)
     : '{}';
 
   const hasConfigDiff =
-    (request.oldConfig && Object.keys(request.oldConfig).length > 0) ||
-    (request.newConfig && Object.keys(request.newConfig).length > 0);
+    (sanitizedOldConfig && Object.keys(sanitizedOldConfig).length > 0) ||
+    (sanitizedNewConfig && Object.keys(sanitizedNewConfig).length > 0);
 
   const footer = (
     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
@@ -150,10 +176,10 @@ const ApprovalDetailsModal: React.FC<Props> = ({
               <span style={{ color: '#ef4444', fontWeight: 500 }}>{request.executionError}</span>
             </S.InfoItem>
           )}
-          {request.metadata && Object.keys(request.metadata).length > 0 && (
+          {sanitizedMetadata && Object.keys(sanitizedMetadata).length > 0 && (
             <S.InfoItem style={{ gridColumn: 'span 2' }}>
               <span>Metadata</span>
-              <span>{JSON.stringify(request.metadata)}</span>
+              <span>{JSON.stringify(sanitizedMetadata)}</span>
             </S.InfoItem>
           )}
         </S.InfoGrid>

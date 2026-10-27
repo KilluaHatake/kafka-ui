@@ -44,6 +44,32 @@ public class SlackNotificationClient {
         .onErrorResume(th -> Mono.empty());
   }
 
+  public Mono<Void> sendApprovalAlert(
+      ConnectAlertProperties.SlackProperties config,
+      ApprovalAlertPayload payload
+  ) {
+    if (!config.isEnabled() || !StringUtils.hasText(config.getWebhookUrl())) {
+      log.debug("Slack approval alerts disabled or webhook URL not configured");
+      return Mono.empty();
+    }
+
+    Map<String, Object> body = buildApprovalSlackMessage(config.getChannel(), payload);
+
+    return webClientBuilder.build()
+        .post()
+        .uri(config.getWebhookUrl())
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(body)
+        .retrieve()
+        .bodyToMono(String.class)
+        .doOnSuccess(resp -> log.info("Approval Slack alert sent for [{}] '{}' on cluster '{}'",
+            payload.type(), payload.targetName(), payload.clusterName()))
+        .doOnError(th -> log.error("Failed to send approval Slack alert for [{}] '{}' on cluster '{}'",
+            payload.type(), payload.targetName(), payload.clusterName(), th))
+        .then()
+        .onErrorResume(th -> Mono.empty());
+  }
+
   private Map<String, Object> buildSlackMessage(String channel, ConnectAlertPayload payload) {
     Map<String, Object> message = new HashMap<>();
     if (StringUtils.hasText(channel)) {
@@ -95,6 +121,56 @@ public class SlackNotificationClient {
         "text", Map.of(
             "type", "mrkdwn",
             "text", "*Error Trace:*\n```\n" + trace + "\n```"
+        )
+    ));
+
+    message.put("blocks", blocks);
+    return message;
+  }
+
+  private Map<String, Object> buildApprovalSlackMessage(String channel, ApprovalAlertPayload payload) {
+    Map<String, Object> message = new HashMap<>();
+    if (StringUtils.hasText(channel)) {
+      message.put("channel", channel);
+    }
+
+    String subject = payload.getSubjectSummary();
+    message.put("text", "⏳ Approval Required: %s (Cluster: %s) - Requested by %s"
+        .formatted(subject, payload.clusterName(), payload.requesterEmail()));
+
+    List<Map<String, Object>> blocks = new ArrayList<>();
+
+    // Header block
+    blocks.add(Map.of(
+        "type", "header",
+        "text", Map.of(
+            "type", "plain_text",
+            "text", "⏳ Approval Request: " + subject,
+            "emoji", true
+        )
+    ));
+
+    // Details section block
+    List<Map<String, String>> fields = new ArrayList<>(List.of(
+        Map.of("type", "mrkdwn", "text", "*Cluster:*\n" + payload.clusterName()),
+        Map.of("type", "mrkdwn", "text", "*Subject:*\n" + subject),
+        Map.of("type", "mrkdwn", "text", "*Target:*\n" + payload.targetName()),
+        Map.of("type", "mrkdwn", "text", "*Requested By:*\n" + payload.requesterEmail())
+    ));
+    if (payload.approverRoles() != null && !payload.approverRoles().isEmpty()) {
+      fields.add(Map.of("type", "mrkdwn", "text", "*Approver Roles:*\n"
+          + String.join(", ", payload.approverRoles())));
+    }
+    fields.add(Map.of("type", "mrkdwn", "text", "*Timestamp:*\n" + payload.timestamp().toString()));
+
+    blocks.add(Map.of("type", "section", "fields", fields));
+
+    String approvalsPath = "/ui/clusters/" + payload.clusterName() + "/approvals";
+    blocks.add(Map.of(
+        "type", "section",
+        "text", Map.of(
+            "type", "mrkdwn",
+            "text", "👉 Please review and approve this request in the *Approvals* tab (`" + approvalsPath + "`)"
         )
     ));
 

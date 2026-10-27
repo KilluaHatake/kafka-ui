@@ -51,6 +51,11 @@ export interface ApprovalProperties {
   requireAlertSettingsUpdates: boolean;
   requireConsumerGroupDelete: boolean;
   requireConnectorResetOffsets: boolean;
+  alertNotificationsEnabled?: boolean;
+  sendSlackAlerts?: boolean;
+  sendEmailAlerts?: boolean;
+  slackWebhookUrl?: string;
+  slackChannel?: string;
   approverRoles: string[];
   directApplyRoles: string[];
 }

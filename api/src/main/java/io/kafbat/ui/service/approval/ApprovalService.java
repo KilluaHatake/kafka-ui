@@ -6,6 +6,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.ConnectAlertProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
+import io.kafbat.ui.config.auth.RoleBasedAccessControlProperties;
 import io.kafbat.ui.exception.NotFoundException;
 import io.kafbat.ui.exception.ValidationException;
 import io.kafbat.ui.model.ConnectorActionDTO;
@@ -19,15 +20,18 @@ import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
 import io.kafbat.ui.model.rbac.Permission;
 import io.kafbat.ui.model.rbac.Resource;
+import io.kafbat.ui.model.rbac.Subject;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.BrokerService;
 import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.ConsumerGroupService;
+import io.kafbat.ui.service.KafkaConfigSanitizer;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.MessagesService;
 import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
+import io.kafbat.ui.service.notification.ApprovalAlertPayload;
 import io.kafbat.ui.service.notification.NotificationService;
 import io.kafbat.ui.service.rbac.AccessControlService;
 import io.kafbat.ui.util.KafkaClientSslPropertiesUtil;
@@ -83,6 +87,9 @@ public class ApprovalService implements Closeable {
   private final ConsumerGroupService consumerGroupService;
   private final ConnectAlertProperties alertProperties;
   private final AccessControlService accessControlService;
+  private final KafkaConfigSanitizer kafkaConfigSanitizer;
+  @Nullable
+  private final RoleBasedAccessControlProperties rbacProperties;
 
   // In-memory cache: clusterName -> (requestId -> ApprovalRequest)
   private final Map<String, Map<String, ApprovalRequest>> requestsCache = new ConcurrentHashMap<>();
@@ -215,7 +222,75 @@ public class ApprovalService implements Closeable {
     log.info("Created approval request {} for [{}] {} on cluster '{}' by '{}'",
         request.getId(), type, targetName, clusterName, requester.principal());
 
+    if (approvalProperties.isAlertNotificationsEnabled() && notificationService != null) {
+      ApprovalRequest sanitized = sanitizeForDisplay(request);
+      ApprovalAlertPayload payload = ApprovalAlertPayload.fromRequest(
+          sanitized,
+          approvalProperties.getApproverRoles()
+      );
+      List<String> approverEmails = getApproverEmails(clusterName);
+
+      var alertMono = notificationService.sendApprovalAlert(payload, approvalProperties, approverEmails);
+      if (alertMono != null) {
+        alertMono
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .subscribe(
+                null,
+                th -> log.error("Failed to send approval alert for request {}", request.getId(), th)
+            );
+      }
+    }
+
     return Mono.just(request);
+  }
+
+  public List<String> getApproverEmails(String clusterName) {
+    if (rbacProperties == null || rbacProperties.getRoles() == null) {
+      return List.of();
+    }
+    List<String> approverRoles = approvalProperties.getApproverRoles();
+    if (approverRoles == null || approverRoles.isEmpty()) {
+      return List.of();
+    }
+    return rbacProperties.getRoles().stream()
+        .filter(role -> approverRoles.contains(role.getName()))
+        .filter(role -> role.getClusters() == null
+            || role.getClusters().contains(clusterName)
+            || role.getClusters().contains(".*"))
+        .filter(role -> role.getSubjects() != null)
+        .flatMap(role -> role.getSubjects().stream())
+        .filter(subject -> "user".equalsIgnoreCase(subject.getType()) && subject.getValue().contains("@"))
+        .map(Subject::getValue)
+        .distinct()
+        .toList();
+  }
+
+  public ApprovalRequest sanitizeForDisplay(ApprovalRequest request) {
+    if (request == null) {
+      return null;
+    }
+    return request.toBuilder()
+        .oldConfig(sanitizeConfig(request.getOldConfig()))
+        .newConfig(sanitizeConfig(request.getNewConfig()))
+        .metadata(sanitizeConfig(request.getMetadata()))
+        .build();
+  }
+
+  @Nullable
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> sanitizeConfig(@Nullable Map<String, Object> config) {
+    if (config == null) {
+      return null;
+    }
+    Map<String, Object> sanitized = new HashMap<>();
+    config.forEach((k, v) -> {
+      if (v instanceof Map<?, ?> nested) {
+        sanitized.put(k, sanitizeConfig((Map<String, Object>) nested));
+      } else {
+        sanitized.put(k, kafkaConfigSanitizer.sanitize(k, v));
+      }
+    });
+    return sanitized;
   }
 
   public Flux<ApprovalRequest> getRequests(

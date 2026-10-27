@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
+import io.kafbat.ui.config.auth.RoleBasedAccessControlProperties;
 import io.kafbat.ui.model.KafkaCluster;
 import io.kafbat.ui.model.TopicCreationDTO;
 import io.kafbat.ui.model.approval.ApprovalRequest;
@@ -17,6 +18,7 @@ import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.Permission;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.ClustersStorage;
+import io.kafbat.ui.service.KafkaConfigSanitizer;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
@@ -68,6 +70,7 @@ class ApprovalServiceTest {
     topicsService = mock(TopicsService.class);
     kafkaConnectService = mock(KafkaConnectService.class);
     notificationService = mock(NotificationService.class);
+    when(notificationService.sendApprovalAlert(any(), any(), any())).thenReturn(reactor.core.publisher.Mono.empty());
     brokerService = mock(io.kafbat.ui.service.BrokerService.class);
     consumerGroupService = mock(io.kafbat.ui.service.ConsumerGroupService.class);
     alertProperties = new io.kafbat.ui.config.ConnectAlertProperties();
@@ -75,6 +78,9 @@ class ApprovalServiceTest {
     when(accessControlService.isRbacEnabled()).thenReturn(true);
 
     cluster = KafkaCluster.builder().name("local-cluster").build();
+
+    KafkaConfigSanitizer sanitizer = new KafkaConfigSanitizer(true, List.of());
+    RoleBasedAccessControlProperties rbacProperties = new RoleBasedAccessControlProperties();
 
     approvalService = new ApprovalService(
         approvalProperties,
@@ -87,7 +93,9 @@ class ApprovalServiceTest {
         brokerService,
         consumerGroupService,
         alertProperties,
-        accessControlService
+        accessControlService,
+        sanitizer,
+        rbacProperties
     );
   }
 
@@ -294,5 +302,73 @@ class ApprovalServiceTest {
     boolean result = approvalService.createTopicIfNeeded(cluster, () -> ac, "__kui-approval-requests");
     assertThat(result).isTrue();
     verify(ac).createTopic(eq("__kui-approval-requests"), eq(1), any(), any());
+  }
+
+  @Test
+  void sanitizesSensitivePropertiesForDisplay() {
+    ApprovalRequest raw = ApprovalRequest.builder()
+        .id("req-1")
+        .clusterName("local-cluster")
+        .type(ApprovalTargetType.TOPIC_CONFIG_UPDATE)
+        .targetName("topic-a")
+        .requesterEmail("dev@test.com")
+        .oldConfig(Map.of("retention.ms", "1000", "ssl.keystore.password", "secret123"))
+        .newConfig(Map.of("retention.ms", "2000", "ssl.keystore.password", "newsecret", "api.token", "xyz"))
+        .metadata(Map.of("partitions", 3, "admin.password", "admin123"))
+        .build();
+
+    ApprovalRequest sanitized = approvalService.sanitizeForDisplay(raw);
+
+    assertThat(sanitized.getOldConfig().get("retention.ms")).isEqualTo("1000");
+    assertThat(sanitized.getOldConfig().get("ssl.keystore.password")).isEqualTo("******");
+
+    assertThat(sanitized.getNewConfig().get("retention.ms")).isEqualTo("2000");
+    assertThat(sanitized.getNewConfig().get("ssl.keystore.password")).isEqualTo("******");
+    assertThat(sanitized.getNewConfig().get("api.token")).isEqualTo("******");
+
+    assertThat(sanitized.getMetadata().get("partitions")).isEqualTo(3);
+    assertThat(sanitized.getMetadata().get("admin.password")).isEqualTo("******");
+  }
+
+  @Test
+  void resolvesApproverEmailsFromRbacProperties() {
+    RoleBasedAccessControlProperties rbac = new RoleBasedAccessControlProperties();
+    io.kafbat.ui.model.rbac.Role archRole = new io.kafbat.ui.model.rbac.Role();
+    archRole.setName("Architect");
+    archRole.setClusters(List.of("local-cluster"));
+
+    io.kafbat.ui.model.rbac.Subject user1 = new io.kafbat.ui.model.rbac.Subject();
+    user1.setProvider(io.kafbat.ui.model.rbac.provider.Provider.OAUTH_GOOGLE);
+    user1.setType("user");
+    user1.setValue("lead-architect@company.com");
+
+    io.kafbat.ui.model.rbac.Subject user2 = new io.kafbat.ui.model.rbac.Subject();
+    user2.setProvider(io.kafbat.ui.model.rbac.provider.Provider.OAUTH_GOOGLE);
+    user2.setType("user");
+    user2.setValue("another-arch@company.com");
+
+    archRole.setSubjects(List.of(user1, user2));
+    archRole.setPermissions(List.of());
+    rbac.setRoles(List.of(archRole));
+
+    KafkaConfigSanitizer sanitizer = new KafkaConfigSanitizer(true, List.of());
+    ApprovalService svc = new ApprovalService(
+        approvalProperties,
+        clustersStorage,
+        adminClientService,
+        auditService,
+        topicsService,
+        kafkaConnectService,
+        notificationService,
+        brokerService,
+        consumerGroupService,
+        alertProperties,
+        accessControlService,
+        sanitizer,
+        rbac
+    );
+
+    List<String> emails = svc.getApproverEmails("local-cluster");
+    assertThat(emails).containsExactlyInAnyOrder("lead-architect@company.com", "another-arch@company.com");
   }
 }

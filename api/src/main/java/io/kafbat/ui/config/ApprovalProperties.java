@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,14 @@ public class ApprovalProperties {
   private boolean requireAlertSettingsUpdates = false;
   private boolean requireConsumerGroupDelete = false;
   private boolean requireConnectorResetOffsets = false;
+
+  private boolean alertNotificationsEnabled = true;
+  private boolean sendSlackAlerts = true;
+  private boolean sendEmailAlerts = true;
+  @Nullable
+  private String slackWebhookUrl;
+  @Nullable
+  private String slackChannel;
 
   private List<String> directApplyRoles = new ArrayList<>(List.of("Architect", "Admin"));
   private List<String> approverRoles = new ArrayList<>(List.of("Architect", "Admin"));

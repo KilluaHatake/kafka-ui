@@ -40,7 +40,7 @@ public class KafkaConfigSanitizer {
 
   private final List<Pattern> sanitizeKeysPatterns;
 
-  KafkaConfigSanitizer(
+  public KafkaConfigSanitizer(
       @Value("${kafka.config.sanitizer.enabled:true}") boolean enabled,
       @Value("${kafka.config.sanitizer.patterns:}") List<String> patternsToSanitize
   ) {

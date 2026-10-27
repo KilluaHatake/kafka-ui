@@ -27,6 +27,9 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     requireAlertSettingsUpdates: true,
     requireConsumerGroupDelete: true,
     requireConnectorResetOffsets: true,
+    alertNotificationsEnabled: true,
+    sendSlackAlerts: true,
+    sendEmailAlerts: true,
     approverRoles: ['Architect', 'Admin'],
     directApplyRoles: ['Architect', 'Admin'],
   });
@@ -209,6 +212,67 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
               When enabled, resetting connector offsets requires architect approval.
             </S.SettingDescription>
           </div>
+
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
+            <S.SettingCheckboxLabel>
+              <input
+                type="checkbox"
+                checked={formState.alertNotificationsEnabled ?? true}
+                onChange={(e) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    alertNotificationsEnabled: e.target.checked,
+                  }))
+                }
+              />
+              Send Alerts for Pending Approval Requests
+            </S.SettingCheckboxLabel>
+            <S.SettingDescription>
+              When enabled, notifications are sent to approvers when an approval request is submitted.
+            </S.SettingDescription>
+          </div>
+
+          {(formState.alertNotificationsEnabled ?? true) && (
+            <div style={{ marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <S.SettingCheckboxLabel>
+                  <input
+                    type="checkbox"
+                    checked={formState.sendSlackAlerts ?? true}
+                    onChange={(e) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        sendSlackAlerts: e.target.checked,
+                      }))
+                    }
+                  />
+                  Send Slack Alerts
+                </S.SettingCheckboxLabel>
+                <S.SettingDescription>
+                  Notifies approvers via Slack channel when an approval request is pending review.
+                </S.SettingDescription>
+              </div>
+
+              <div>
+                <S.SettingCheckboxLabel>
+                  <input
+                    type="checkbox"
+                    checked={formState.sendEmailAlerts ?? true}
+                    onChange={(e) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        sendEmailAlerts: e.target.checked,
+                      }))
+                    }
+                  />
+                  Send Email Alerts
+                </S.SettingCheckboxLabel>
+                <S.SettingDescription>
+                  Sends email notifications directly to approver role users.
+                </S.SettingDescription>
+              </div>
+            </div>
+          )}
 
           <div>
             <S.SettingInputLabel>
