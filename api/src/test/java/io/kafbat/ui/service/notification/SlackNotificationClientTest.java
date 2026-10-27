@@ -1,6 +1,7 @@
 package io.kafbat.ui.service.notification;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -55,6 +56,8 @@ class SlackNotificationClientTest {
     client.sendAlert(config, payload).block();
 
     wireMockServer.verify(postRequestedFor(urlEqualTo("/slack-webhook"))
-        .withHeader("Content-Type", equalTo("application/json")));
+        .withHeader("Content-Type", equalTo("application/json"))
+        .withRequestBody(containing("MongoTimeoutException: Could not connect to replica set"))
+        .withRequestBody(containing("*Root Cause:*")));
   }
 }

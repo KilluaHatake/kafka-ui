@@ -18,7 +18,7 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class SlackNotificationClient {
 
-  private static final int MAX_TRACE_LENGTH = 1000;
+  private static final int MAX_TRACE_LENGTH = 2400;
   private final WebClient.Builder webClientBuilder;
 
   public Mono<Void> sendAlert(ConnectAlertProperties.SlackProperties config, ConnectAlertPayload payload) {
@@ -49,8 +49,11 @@ public class SlackNotificationClient {
     if (StringUtils.hasText(channel)) {
       message.put("channel", channel);
     }
-    message.put("text", "🚨 Kafka Connect Failure: %s [%s] in cluster %s"
-        .formatted(payload.connectorName(), payload.component(), payload.clusterName()));
+
+    String rootCause = payload.getRootCause();
+    String summary = StringUtils.hasText(rootCause) ? " - " + rootCause : "";
+    message.put("text", "🚨 Kafka Connect Failure: %s [%s] in cluster %s%s"
+        .formatted(payload.connectorName(), payload.component(), payload.clusterName(), summary));
 
     List<Map<String, Object>> blocks = new ArrayList<>();
 
@@ -74,6 +77,17 @@ public class SlackNotificationClient {
     );
     blocks.add(Map.of("type", "section", "fields", fields));
 
+    // Root Cause block
+    if (StringUtils.hasText(rootCause)) {
+      blocks.add(Map.of(
+          "type", "section",
+          "text", Map.of(
+              "type", "mrkdwn",
+              "text", "*Root Cause:*\n> *" + escapeMrkdwn(rootCause) + "*"
+          )
+      ));
+    }
+
     // Error trace block
     String trace = payload.getTruncatedTrace(MAX_TRACE_LENGTH).replace("```", "'''");
     blocks.add(Map.of(
@@ -86,5 +100,14 @@ public class SlackNotificationClient {
 
     message.put("blocks", blocks);
     return message;
+  }
+
+  private String escapeMrkdwn(String text) {
+    if (text == null) {
+      return "";
+    }
+    return text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;");
   }
 }

@@ -10,13 +10,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.HtmlUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 @Component
 @Slf4j
 public class EmailNotificationClient {
 
-  private static final int MAX_TRACE_LENGTH = 1500;
+  private static final int MAX_TRACE_LENGTH = 10000;
 
   public Mono<Void> sendAlert(ConnectAlertProperties.EmailProperties config, ConnectAlertPayload payload) {
     if (!config.isEnabled() || !StringUtils.hasText(config.getSmtpHost()) || config.getRecipients().isEmpty()) {
@@ -32,24 +31,23 @@ public class EmailNotificationClient {
 
         helper.setFrom(config.getFrom());
         helper.setTo(config.getRecipients().toArray(new String[0]));
-        helper.setSubject("[Kafka Connect Alert] Failure: %s [%s] in cluster %s"
-            .formatted(payload.connectorName(), payload.component(), payload.clusterName()));
-        
+        String rootCause = payload.getRootCause();
+        String subjectSuffix = StringUtils.hasText(rootCause) ? " - " + rootCause : "";
+        helper.setSubject(("[Kafka Connect Alert] Failure: %s [%s] in cluster %s%s")
+            .formatted(payload.connectorName(), payload.component(), payload.clusterName(), subjectSuffix));
+
         String plainText = buildEmailBody(payload);
-        String htmlBody = buildHtmlEmailBody(payload);
-        helper.setText(plainText, htmlBody);
+        String htmlText = buildHtmlEmailBody(payload);
+        helper.setText(plainText, htmlText);
 
         mailSender.send(mimeMessage);
-        log.info("Email alert sent to {} for connector '{}' [{}] on cluster '{}'",
-            config.getRecipients(), payload.connectorName(), payload.component(), payload.clusterName());
+        log.info("Email alert sent for connector '{}' [{}] on cluster '{}' to {}",
+            payload.connectorName(), payload.component(), payload.clusterName(), config.getRecipients());
       } catch (Exception e) {
         log.error("Failed to send email alert for connector '{}' on cluster '{}'",
             payload.connectorName(), payload.clusterName(), e);
       }
-    })
-    .subscribeOn(Schedulers.boundedElastic())
-    .then()
-    .onErrorResume(th -> Mono.empty());
+    });
   }
 
   private JavaMailSenderImpl createMailSender(ConnectAlertProperties.EmailProperties config) {
@@ -74,6 +72,7 @@ public class EmailNotificationClient {
   }
 
   private String buildEmailBody(ConnectAlertPayload payload) {
+    String rootCause = payload.getRootCause();
     return """
         Kafka Connect Failure Notification
         ==================================
@@ -83,6 +82,7 @@ public class EmailNotificationClient {
         Connector:         %s
         Component:         %s
         Timestamp:         %s
+        Root Cause:        %s
 
         Error Trace:
         ----------------------------------
@@ -93,12 +93,19 @@ public class EmailNotificationClient {
         payload.connectorName(),
         payload.component(),
         payload.timestamp().toString(),
+        rootCause != null ? rootCause : "N/A",
         payload.getTruncatedTrace(MAX_TRACE_LENGTH)
     );
   }
 
   private String buildHtmlEmailBody(ConnectAlertPayload payload) {
     String escapedTrace = HtmlUtils.htmlEscape(payload.getTruncatedTrace(MAX_TRACE_LENGTH));
+    String rootCauseHtml = "";
+    if (StringUtils.hasText(payload.getRootCause())) {
+      rootCauseHtml = """
+          <tr><td class="label">Root Cause</td><td><strong style="color:#d9534f">%s</strong></td></tr>
+          """.formatted(HtmlUtils.htmlEscape(payload.getRootCause()));
+    }
     return """
         <!DOCTYPE html>
         <html>
@@ -129,6 +136,7 @@ public class EmailNotificationClient {
                 <tr><td class="label">Connector</td><td><strong>%s</strong></td></tr>
                 <tr><td class="label">Component</td><td><span style="color:#d9534f">%s</span></td></tr>
                 <tr><td class="label">Timestamp</td><td>%s</td></tr>
+                %s
               </table>
               <div class="trace-header">Error Trace:</div>
               <div class="trace-box">%s</div>
@@ -143,6 +151,7 @@ public class EmailNotificationClient {
         HtmlUtils.htmlEscape(payload.connectorName()),
         HtmlUtils.htmlEscape(payload.component()),
         payload.timestamp().toString(),
+        rootCauseHtml,
         escapedTrace
     );
   }
