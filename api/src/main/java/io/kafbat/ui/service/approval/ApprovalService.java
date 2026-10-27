@@ -3,6 +3,7 @@ package io.kafbat.ui.service.approval;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.kafbat.ui.config.ApprovalProperties;
+import io.kafbat.ui.config.ConnectAlertProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
 import io.kafbat.ui.exception.NotFoundException;
 import io.kafbat.ui.exception.ValidationException;
@@ -19,9 +20,8 @@ import io.kafbat.ui.model.rbac.Permission;
 import io.kafbat.ui.model.rbac.Resource;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.BrokerService;
-import io.kafbat.ui.service.ConsumerGroupService;
-import io.kafbat.ui.config.ConnectAlertProperties;
 import io.kafbat.ui.service.ClustersStorage;
+import io.kafbat.ui.service.ConsumerGroupService;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.MessagesService;
 import io.kafbat.ui.service.TopicsService;
@@ -345,7 +345,8 @@ public class ApprovalService implements Closeable {
         return Mono.error(new AccessDeniedException("User is not authorized to delete this request"));
       }
       if (request.getStatus() != ApprovalStatus.PENDING) {
-        return Mono.error(new ValidationException("Only PENDING requests can be deleted. Current status: " + request.getStatus()));
+        return Mono.error(new ValidationException(
+            "Only PENDING requests can be deleted. Current status: " + request.getStatus()));
       }
 
       requestsCache.computeIfPresent(cluster.getName(), (k, map) -> {
@@ -431,12 +432,17 @@ public class ApprovalService implements Closeable {
     if (newConfig.containsKey("pollingIntervalMs")) {
       try {
         alertProperties.setPollingIntervalMs(Long.parseLong(String.valueOf(newConfig.get("pollingIntervalMs"))));
-      } catch (NumberFormatException ignored) {}
+      } catch (NumberFormatException ignored) {
+        // ignored
+      }
     }
     if (newConfig.containsKey("throttleIntervalMinutes")) {
       try {
-        alertProperties.setThrottleIntervalMinutes(Integer.parseInt(String.valueOf(newConfig.get("throttleIntervalMinutes"))));
-      } catch (NumberFormatException ignored) {}
+        alertProperties.setThrottleIntervalMinutes(
+            Integer.parseInt(String.valueOf(newConfig.get("throttleIntervalMinutes"))));
+      } catch (NumberFormatException ignored) {
+        // ignored
+      }
     }
     if (newConfig.get("slack") instanceof Map<?, ?> slackMap) {
       if (slackMap.containsKey("enabled")) {
@@ -459,7 +465,9 @@ public class ApprovalService implements Closeable {
       if (emailMap.containsKey("smtpPort")) {
         try {
           alertProperties.getEmail().setSmtpPort(Integer.parseInt(String.valueOf(emailMap.get("smtpPort"))));
-        } catch (NumberFormatException ignored) {}
+        } catch (NumberFormatException ignored) {
+          // ignored
+        }
       }
       if (emailMap.containsKey("username")) {
         alertProperties.getEmail().setUsername((String) emailMap.get("username"));
@@ -471,7 +479,8 @@ public class ApprovalService implements Closeable {
         }
       }
       if (emailMap.containsKey("starttlsEnabled")) {
-        alertProperties.getEmail().setStarttlsEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("starttlsEnabled"))));
+        alertProperties.getEmail().setStarttlsEnabled(
+            Boolean.parseBoolean(String.valueOf(emailMap.get("starttlsEnabled"))));
       }
       if (emailMap.containsKey("sslEnabled")) {
         alertProperties.getEmail().setSslEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("sslEnabled"))));

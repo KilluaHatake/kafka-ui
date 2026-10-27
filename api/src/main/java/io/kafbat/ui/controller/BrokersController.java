@@ -165,7 +165,11 @@ public class BrokersController extends AbstractController implements BrokersApi,
                         user,
                         Map.of(name, oldVal),
                         Map.of(name, bci.getValue() != null ? bci.getValue() : ""),
-                        Map.of("brokerId", id, "configName", name, "configValue", bci.getValue() != null ? bci.getValue() : "")
+                        Map.of(
+                            "brokerId", id,
+                            "configName", name,
+                            "configValue", bci.getValue() != null ? bci.getValue() : ""
+                        )
                     ))
                     .<ResponseEntity<Void>>flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
                         "Broker configuration update submitted for approval (ID: " + req.getId() + ")",

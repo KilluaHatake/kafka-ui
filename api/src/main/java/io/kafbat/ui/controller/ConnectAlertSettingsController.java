@@ -80,10 +80,11 @@ public class ConnectAlertSettingsController {
                 oldMap,
                 newMap,
                 Map.of("target", "alert-settings")
-            ).<ResponseEntity<ConnectAlertSettingsDto>>flatMap((ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
-                "Alert settings update submitted for approval (ID: " + req.getId() + ")",
-                req.getId()
-            )));
+            ).<ResponseEntity<ConnectAlertSettingsDto>>flatMap(
+                (ApprovalRequest req) -> Mono.error(new ApprovalRequiredException(
+                    "Alert settings update submitted for approval (ID: " + req.getId() + ")",
+                    req.getId()
+                )));
           }
 
           if (newSettings != null) {

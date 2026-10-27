@@ -14,6 +14,7 @@ import io.kafbat.ui.model.TopicCreationDTO;
 import io.kafbat.ui.model.approval.ApprovalRequest;
 import io.kafbat.ui.model.approval.ApprovalStatus;
 import io.kafbat.ui.model.approval.ApprovalTargetType;
+import io.kafbat.ui.model.rbac.Permission;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.KafkaConnectService;
@@ -21,8 +22,6 @@ import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
 import io.kafbat.ui.service.notification.NotificationService;
 import io.kafbat.ui.service.rbac.AccessControlService;
-import io.kafbat.ui.model.rbac.Permission;
-import io.kafbat.ui.model.rbac.Resource;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,7 +91,7 @@ class ApprovalServiceTest {
 
   @Test
   void isApprovalRequiredReturnsTrueForDeveloperAndFalseForArchitect() {
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
     AuthenticatedUser architectUser = new AuthenticatedUser("arch@company.com", List.of("Architect"));
 
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, devUser)).isTrue();
@@ -114,7 +113,7 @@ class ApprovalServiceTest {
 
   @Test
   void isApproverValidatesRoles() {
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
     AuthenticatedUser architectUser = new AuthenticatedUser("arch@company.com", List.of("Architect"));
 
     assertThat(approvalService.isApprover(devUser)).isFalse();
@@ -123,7 +122,7 @@ class ApprovalServiceTest {
 
   @Test
   void createRequestAndQueryLifecycle() {
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
 
     ApprovalRequest request = approvalService.createRequest(
         "local-cluster",
@@ -153,7 +152,7 @@ class ApprovalServiceTest {
 
   @Test
   void approveRequestExecutesActionAndSendsAudit() {
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
     AuthenticatedUser architectUser = new AuthenticatedUser("arch@company.com", List.of("Architect"));
 
     when(topicsService.createTopic(eq(cluster), any())).thenReturn(Mono.empty());
@@ -181,7 +180,7 @@ class ApprovalServiceTest {
 
   @Test
   void rejectRequestUpdatesStatusAndSendsAudit() {
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
     AuthenticatedUser architectUser = new AuthenticatedUser("arch@company.com", List.of("Architect"));
 
     ApprovalRequest request = approvalService.createRequest(
@@ -212,7 +211,7 @@ class ApprovalServiceTest {
 
   @Test
   void nonApproverCannotApproveOrReject() {
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
 
     ApprovalRequest request = approvalService.createRequest(
         "local-cluster",
@@ -238,7 +237,7 @@ class ApprovalServiceTest {
   void testRbacPermissionsChecksForDifferentRoles() {
     when(accessControlService.isRbacEnabled()).thenReturn(true);
 
-    AuthenticatedUser supportUser = new AuthenticatedUser("support@company.com", List.of("Support"));
+    final AuthenticatedUser supportUser = new AuthenticatedUser("support@company.com", List.of("Support"));
     Permission supportTopicPerm = new Permission();
     supportTopicPerm.setResource("TOPIC");
     supportTopicPerm.setActions(List.of("view", "messages_read"));
@@ -253,7 +252,7 @@ class ApprovalServiceTest {
     assertThat(approvalService.canAccessApprovals("local-cluster", supportUser)).isFalse();
     assertThat(approvalService.canAccessAlertSettings(supportUser, "local-cluster")).isFalse();
 
-    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+    final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
     Permission devTopicPerm = new Permission();
     devTopicPerm.setResource("TOPIC");
     devTopicPerm.setActions(List.of("all"));
