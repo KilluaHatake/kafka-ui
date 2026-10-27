@@ -7,8 +7,8 @@ import { useSearchParams } from 'react-router-dom';
 import {
   FilterableColumnDef,
   KafbatFilterVariant,
-  getFilterableColumns,
-} from 'components/common/NewTable/ColumnFilter';
+} from '../../types';
+import { getFilterableColumns } from '../getFilterableColumns';
 import { useCallback, useMemo } from 'react';
 
 import { Persister } from './types';
