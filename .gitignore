@@ -25,6 +25,8 @@ target/
 /dist/
 /nbdist/
 /.nb-gradle/
+# Eclipse/STS per-source-set output folder (compiled classes + generated grammars)
+**/bin/
 build/
 
 ### VS Code ###
