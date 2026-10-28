@@ -186,14 +186,18 @@ export const approvalsApi = {
         headers: { 'Content-Type': 'application/json' },
       }
     );
+    // Fail-closed: if the server can't confirm a user's privileges, deny by
+    // default. Granting everything here (the old behavior) would expose the
+    // Approve button, Workflow Settings, and Alert Settings to unauthenticated
+    // users or whenever the request errors (401/403/500).
     if (!res.ok) {
       return {
         username: '',
         roles: [],
-        canApprove: true,
-        canViewApprovals: true,
-        canManageWorkflowSettings: true,
-        canAccessAlertSettings: true,
+        canApprove: false,
+        canViewApprovals: false,
+        canManageWorkflowSettings: false,
+        canAccessAlertSettings: false,
       };
     }
     return res.json();

@@ -59,8 +59,13 @@ const Approvals: React.FC = () => {
 
   const permissionsQuery = useApprovalPermissions(clusterName);
   const permissions = permissionsQuery?.data;
-  const canApprove = permissions?.canApprove ?? true;
-  const canManageWorkflowSettings = permissions ? permissions.canManageWorkflowSettings !== false : true;
+  // Fail-closed: default to no approval privileges until the server confirms
+  // them. Previously these defaulted to true, which surfaced an enabled Approve
+  // button and settings controls to users whose privileges couldn't be resolved.
+  const canApprove = permissions?.canApprove ?? false;
+  const canManageWorkflowSettings = permissions
+    ? permissions.canManageWorkflowSettings !== false
+    : false;
 
   const { data: requests = [], isLoading, refetch } = useApprovals(
     clusterName,
