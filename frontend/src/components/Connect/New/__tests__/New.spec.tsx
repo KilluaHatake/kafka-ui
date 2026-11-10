@@ -15,6 +15,12 @@ import {
   useConnectorPlugins,
   useValidateConnectorPluginConfig,
 } from 'lib/hooks/api/kafkaConnect';
+import { showAlert } from 'lib/errorHandling';
+
+jest.mock('lib/errorHandling', () => ({
+  ...jest.requireActual('lib/errorHandling'),
+  showAlert: jest.fn(),
+}));
 
 jest.mock(
   'components/common/Editor/Editor',
@@ -103,5 +109,241 @@ describe('New', () => {
     renderComponent();
     await simulateFormSubmit();
     expect(mockHistoryPush).not.toHaveBeenCalled();
+  });
+
+  describe('Form Builder and Raw JSON synchronization', () => {
+    const mockPlugins = [
+      { class: 'org.apache.kafka.connect.file.FileStreamSinkConnector' },
+    ];
+    const mockValidation = {
+      configs: [
+        {
+          definition: {
+            name: 'file',
+            displayName: 'Destination File',
+            type: 'STRING',
+            group: 'Common',
+            defaultValue: 'default.txt',
+          },
+        },
+        {
+          definition: {
+            name: 'topics',
+            displayName: 'Topics',
+            type: 'STRING',
+            group: 'Common',
+          },
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      (useConnectorPlugins as jest.Mock).mockImplementation(() => ({
+        data: mockPlugins,
+        isLoading: false,
+      }));
+      (useValidateConnectorPluginConfig as jest.Mock).mockImplementation(() => ({
+        mutateAsync: jest.fn().mockResolvedValue(mockValidation),
+      }));
+    });
+
+    it('populates raw JSON editor with form values when switching to raw JSON', async () => {
+      renderComponent();
+
+      await userEvent.type(
+        screen.getByPlaceholderText('Connector Name'),
+        'my-sink-connector'
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Select connector plugin'));
+      });
+      await act(async () => {
+        fireEvent.click(
+          screen.getByText('org.apache.kafka.connect.file.FileStreamSinkConnector')
+        );
+      });
+
+      expect(screen.getByText(/Common/i)).toBeInTheDocument();
+
+      const fileInput = screen.getByDisplayValue('default.txt');
+      expect(fileInput).toBeInTheDocument();
+
+      const inputs = screen.getAllByRole('textbox');
+      const emptyInput = inputs.find(
+        (input) => (input as HTMLInputElement).value === ''
+      );
+      if (emptyInput) {
+        fireEvent.change(emptyInput, { target: { value: 'orders-topic' } });
+      }
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
+      });
+
+      const jsonTextarea = screen.getByPlaceholderText('json') as HTMLTextAreaElement;
+      expect(jsonTextarea).toBeInTheDocument();
+      const parsedJson = JSON.parse(jsonTextarea.value);
+      expect(parsedJson).toEqual(
+        expect.objectContaining({
+          name: 'my-sink-connector',
+          'connector.class': 'org.apache.kafka.connect.file.FileStreamSinkConnector',
+          file: 'default.txt',
+          topics: 'orders-topic',
+        })
+      );
+    });
+
+    it('allows editing raw JSON and adding custom configurations not in connector definition', async () => {
+      const createConnectorMock = jest.fn(() => Promise.resolve(connector));
+      (useCreateConnector as jest.Mock).mockImplementation(() => ({
+        createResource: createConnectorMock,
+      }));
+
+      renderComponent();
+
+      await userEvent.type(
+        screen.getByPlaceholderText('Connector Name'),
+        'custom-connector'
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Select connector plugin'));
+      });
+      await act(async () => {
+        fireEvent.click(
+          screen.getByText('org.apache.kafka.connect.file.FileStreamSinkConnector')
+        );
+      });
+
+      // Switch to Raw JSON
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
+      });
+
+      const jsonTextarea = screen.getByPlaceholderText('json');
+      const customConfig = {
+        name: 'custom-connector',
+        'connector.class': 'org.apache.kafka.connect.file.FileStreamSinkConnector',
+        file: '/custom/path/file.txt',
+        'transforms': 'unwrap',
+        'transforms.unwrap.type': 'io.debezium.transforms.ExtractNewRecordState',
+        'my.extra.unsupported.setting': 'custom-val',
+      };
+
+      fireEvent.change(jsonTextarea, {
+        target: { value: JSON.stringify(customConfig, null, 2) },
+      });
+
+      await act(async () => {
+        fireEvent.submit(screen.getByRole('form'));
+      });
+
+      expect(createConnectorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newConnector: expect.objectContaining({
+            name: 'custom-connector',
+            config: expect.objectContaining({
+              file: '/custom/path/file.txt',
+              transforms: 'unwrap',
+              'transforms.unwrap.type': 'io.debezium.transforms.ExtractNewRecordState',
+              'my.extra.unsupported.setting': 'custom-val',
+            }),
+          }),
+        })
+      );
+    });
+
+    it('preserves custom configs when toggling between raw JSON and form builder', async () => {
+      const { container } = renderComponent();
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Select connector plugin'));
+      });
+      await act(async () => {
+        fireEvent.click(
+          screen.getByText('org.apache.kafka.connect.file.FileStreamSinkConnector')
+        );
+      });
+
+      // Switch to Raw JSON
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
+      });
+
+      const jsonTextarea = screen.getByPlaceholderText('json');
+      const customConfig = {
+        'connector.class': 'org.apache.kafka.connect.file.FileStreamSinkConnector',
+        file: 'edited-in-json.txt',
+        'custom.plugin.unregistered.key': 'secret-prop',
+      };
+
+      fireEvent.change(jsonTextarea, {
+        target: { value: JSON.stringify(customConfig, null, 2) },
+      });
+
+      // Switch back to Form Builder
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Form Builder' }));
+      });
+
+      // Form builder should show the edited file value
+      expect(screen.getByDisplayValue('edited-in-json.txt')).toBeInTheDocument();
+
+      // Edit another field (topics) in the form builder
+      const topicsInput = container.querySelector('input[name="topics"]') as HTMLInputElement;
+      expect(topicsInput).toBeInTheDocument();
+      fireEvent.change(topicsInput, { target: { value: 'extra-topic' } });
+
+      // Switch back to Raw JSON
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
+      });
+
+      const updatedJson = JSON.parse(
+        (screen.getByPlaceholderText('json') as HTMLTextAreaElement).value
+      );
+
+      // Must have preserved the custom key AND the updated values!
+      expect(updatedJson['custom.plugin.unregistered.key']).toBe('secret-prop');
+      expect(updatedJson.file).toBe('edited-in-json.txt');
+      expect(updatedJson.topics).toBe('extra-topic');
+    });
+
+    it('shows warning alert and prevents switching to form builder when raw JSON is invalid', async () => {
+      renderComponent();
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Select connector plugin'));
+      });
+      await act(async () => {
+        fireEvent.click(
+          screen.getByText('org.apache.kafka.connect.file.FileStreamSinkConnector')
+        );
+      });
+
+      // Switch to Raw JSON
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
+      });
+
+      const jsonTextarea = screen.getByPlaceholderText('json');
+      fireEvent.change(jsonTextarea, {
+        target: { value: '{ invalid: json syntax' },
+      });
+
+      // Try to switch back to Form Builder
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Form Builder' }));
+      });
+
+      // Should show alert
+      expect(showAlert).toHaveBeenCalledWith('warning', expect.objectContaining({
+        title: 'Invalid JSON',
+      }));
+
+      // Editor should still be visible (stayed in raw JSON mode)
+      expect(screen.getByPlaceholderText('json')).toBeInTheDocument();
+    });
   });
 });

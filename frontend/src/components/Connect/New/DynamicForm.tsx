@@ -166,7 +166,8 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             disabled={disabled}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               const val = e.target.value;
-              onChange(key, val === '' ? '' : Number(val));
+              const num = Number(val);
+              onChange(key, val === '' ? '' : Number.isNaN(num) ? val : num);
             }}
           />
         ) : type === 'LIST' ? (

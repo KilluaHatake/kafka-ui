@@ -25,7 +25,7 @@ import {
   useValidateConnectorPluginConfig,
   useCreateConnector,
 } from 'lib/hooks/api/kafkaConnect';
-import { Connect } from 'generated-sources';
+import { Connect, SchemaType } from 'generated-sources';
 import ResourcePageHeading from 'components/common/ResourcePageHeading/ResourcePageHeading';
 import DynamicForm, { ConnectorPluginConfigItem } from './DynamicForm';
 import * as S from './New.styled';
@@ -116,10 +116,39 @@ const New: React.FC = () => {
         };
 
         validationResponse.configs.forEach((cfg) => {
-          if (cfg.definition?.name && cfg.definition?.defaultValue !== undefined) {
-            initialValues[cfg.definition.name] = cfg.definition.defaultValue;
+          const defaultVal =
+            cfg.definition?.defaultValue !== undefined
+              ? cfg.definition.defaultValue
+              : cfg.value?.value;
+          if (
+            cfg.definition?.name &&
+            cfg.definition.name !== 'name' &&
+            cfg.definition.name !== 'connector.class' &&
+            defaultVal !== undefined &&
+            defaultVal !== null &&
+            defaultVal !== ''
+          ) {
+            initialValues[cfg.definition.name] = defaultVal;
           }
         });
+
+        // Merge any existing raw configs if already present
+        try {
+          const existingRaw = getValues().config;
+          if (existingRaw && existingRaw.trim()) {
+            const existingParsed = JSON.parse(existingRaw);
+            if (typeof existingParsed === 'object' && existingParsed !== null) {
+              Object.assign(initialValues, existingParsed);
+              initialValues['connector.class'] = pluginClass;
+            }
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+
+        if (getValues().name && !initialValues.name) {
+          initialValues.name = getValues().name;
+        }
 
         setFormConfigValues(initialValues);
         setValue('config', JSON.stringify(initialValues, null, 2), { shouldDirty: true, shouldValidate: true });
@@ -127,7 +156,12 @@ const New: React.FC = () => {
       }
     } catch {
       // Fallback: populate basic config
-      const fallbackConfig = { 'connector.class': pluginClass };
+      const fallbackConfig: Record<string, string | number | boolean> = {
+        'connector.class': pluginClass,
+      };
+      if (getValues().name) {
+        fallbackConfig.name = getValues().name;
+      }
       setFormConfigValues(fallbackConfig);
       setValue('config', JSON.stringify(fallbackConfig, null, 2), { shouldDirty: true, shouldValidate: true });
     }
@@ -146,25 +180,38 @@ const New: React.FC = () => {
     if (mode === 'form') {
       try {
         const rawJson = getValues().config;
-        if (rawJson) {
+        if (rawJson && rawJson.trim()) {
           const parsed = JSON.parse(rawJson);
           if (typeof parsed === 'object' && parsed !== null) {
+            if (parsed.name && typeof parsed.name === 'string') {
+              setValue('name', parsed.name, { shouldDirty: true, shouldValidate: true });
+            }
+            if (parsed['connector.class'] && typeof parsed['connector.class'] === 'string') {
+              setSelectedPlugin(parsed['connector.class']);
+            }
             setFormConfigValues(parsed);
           }
         }
       } catch {
-        // invalid JSON; keep existing form values
+        showAlert('warning', {
+          title: 'Invalid JSON',
+          message:
+            'Unable to parse raw JSON. Please fix JSON syntax errors before switching to Form Builder.',
+        });
+        return;
       }
     } else if (mode === 'json') {
-      if (Object.keys(formConfigValues).length > 0) {
-        setValue('config', JSON.stringify(formConfigValues, null, 2), {
-          shouldDirty: true,
-          shouldValidate: true,
-        });
-      }
-      setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-      }, 50);
+      const currentName = getValues().name;
+      const jsonConfig: Record<string, any> = {
+        ...(currentName ? { name: currentName } : {}),
+        ...(selectedPlugin ? { 'connector.class': selectedPlugin } : {}),
+        ...formConfigValues,
+      };
+
+      setValue('config', JSON.stringify(jsonConfig, null, 2), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
     }
     setViewMode(mode);
   };
@@ -179,15 +226,20 @@ const New: React.FC = () => {
           ? JSON.parse(rawConfig)
           : {};
 
+      const connectorClass =
+        baseConfig['connector.class'] || selectedPlugin || undefined;
+
+      const connectorName = values.name || (baseConfig.name as string) || '';
+
       const finalConfig = {
         ...baseConfig,
-        'connector.class': selectedPlugin || baseConfig['connector.class'],
+        ...(connectorClass ? { 'connector.class': connectorClass } : {}),
       };
 
       const connector: any = await mutation.createResource({
         connectName: values.connectName || selectedConnect,
         newConnector: {
-          name: values.name,
+          name: connectorName,
           config: finalConfig,
         },
       });
@@ -322,33 +374,27 @@ const New: React.FC = () => {
             </S.ModeButtonGroup>
           </S.ModeSwitcherWrapper>
 
-          {pluginConfigs.length > 0 && (
-            <div style={{ display: viewMode === 'form' ? 'block' : 'none' }}>
-              <DynamicForm
-                configs={pluginConfigs}
-                values={formConfigValues}
-                onChange={handleFormFieldChange}
-                disabled={isSubmitting}
-              />
-            </div>
-          )}
-
-          <div
-            style={{
-              display:
-                viewMode === 'json' || pluginConfigs.length === 0
-                  ? 'block'
-                  : 'none',
-            }}
-          >
+          {viewMode === 'form' && pluginConfigs.length > 0 ? (
+            <DynamicForm
+              configs={pluginConfigs}
+              values={formConfigValues}
+              onChange={handleFormFieldChange}
+              disabled={isSubmitting}
+            />
+          ) : (
             <Controller
               control={control}
               name="config"
               render={({ field }) => (
-                <Editor {...field} readOnly={isSubmitting} ref={null} />
+                <Editor
+                  {...field}
+                  schemaType={SchemaType.JSON}
+                  readOnly={isSubmitting}
+                  ref={null}
+                />
               )}
             />
-          </div>
+          )}
 
           <FormError>
             <ErrorMessage errors={errors} name="config" />
