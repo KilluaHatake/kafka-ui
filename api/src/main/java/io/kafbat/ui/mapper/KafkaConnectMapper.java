@@ -23,6 +23,7 @@ import io.kafbat.ui.model.TaskIdDTO;
 import io.kafbat.ui.model.TaskStatusDTO;
 import io.kafbat.ui.model.connect.InternalConnectorInfo;
 import io.kafbat.ui.service.metrics.scrape.KafkaConnectState;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -114,25 +115,29 @@ public interface KafkaConnectMapper {
     Objects.requireNonNull(connector.getStatus());
     List<TaskDTO> tasks = List.of();
 
-    if (connector.getInfo().getTasks() != null
-        && connector.getStatus().getTasks() != null
-    ) {
-      Map<Integer, TaskIdDTO> taskIds = connector.getInfo().getTasks()
-          .stream().map(t -> new TaskIdDTO().task(t.getTask()).connector(t.getConnector()))
-          .collect(Collectors.toMap(
-              TaskIdDTO::getTask,
-              t -> t
-          ));
+    if (connector.getStatus().getTasks() != null) {
+      Map<Integer, TaskIdDTO> taskIds = connector.getInfo().getTasks() == null
+          ? Map.of()
+          : connector.getInfo().getTasks().stream()
+              .map(t -> new TaskIdDTO().task(t.getTask()).connector(t.getConnector()))
+              .collect(Collectors.toMap(
+                  TaskIdDTO::getTask,
+                  t -> t,
+                  (existing, _) -> existing
+              ));
 
       tasks = connector.getStatus().getTasks().stream()
-          .map(s ->
-              new TaskDTO().status(fromClient(s)).id(taskIds.get(s.getId()))
-          ).toList();
+          .map(s -> new TaskDTO()
+              .status(fromClient(s))
+              .id(taskIds.getOrDefault(s.getId(),
+                  new TaskIdDTO().task(s.getId()).connector(connector.getInfo().getName()))))
+          .toList();
     }
 
+    String resolvedConsumerPattern = Optional.ofNullable(consumerGroupPattern).orElse("connect-%s");
     ConnectorDTO connectorDto = fromClient(connector.getInfo())
         .connect(connectName)
-        .consumer(consumerGroupPattern.formatted(connector.getInfo().getName()))
+        .consumer(resolvedConsumerPattern.formatted(connector.getInfo().getName()))
         .status(fromClient(connector.getStatus().getConnector()));
 
     return InternalConnectorInfo.builder()
@@ -140,7 +145,7 @@ public interface KafkaConnectMapper {
         .config(connector.getInfo().getConfig())
         .tasks(tasks)
         .topics(topics)
-        .consumer(consumerGroupPattern.formatted(connector.getInfo().getName()))
+        .consumer(resolvedConsumerPattern.formatted(connector.getInfo().getName()))
         .build();
   }
 
@@ -219,19 +224,44 @@ public interface KafkaConnectMapper {
   }
 
   default KafkaConnectState toScrapeState(ConnectDTO connect, List<InternalConnectorInfo> connectors) {
+    return toScrapeState(connect, connectors, true);
+  }
+
+  default KafkaConnectState toScrapeState(ConnectDTO connect,
+                                          List<InternalConnectorInfo> connectors,
+                                          boolean up) {
+    String version = Optional.ofNullable(connect.getVersion())
+        .map(v -> v.orElse("Unknown"))
+        .orElse("Unknown");
     return KafkaConnectState.builder()
+        .scrapeFinishedAt(Instant.now())
         .name(connect.getName())
-        .version(connect.getVersion().orElse("Unknown"))
+        .version(version)
+        .up(up)
         .connectors(connectors.stream().map(this::toScrapeState).toList())
         .build();
   }
 
   default KafkaConnectState.ConnectorState toScrapeState(InternalConnectorInfo connector) {
+    List<KafkaConnectState.TaskState> tasks = Optional.ofNullable(connector.getTasks())
+        .orElse(List.of())
+        .stream()
+        .filter(t -> t.getStatus() != null)
+        .map(t -> {
+          Integer taskId = Optional.ofNullable(t.getStatus().getId())
+              .or(() -> Optional.ofNullable(t.getId()).map(TaskIdDTO::getTask))
+              .orElse(-1);
+          ConnectorTaskStatusDTO taskState = Optional.ofNullable(t.getStatus().getState())
+              .orElse(ConnectorTaskStatusDTO.UNASSIGNED);
+          return new KafkaConnectState.TaskState(taskId, taskState, t.getStatus().getWorkerId());
+        })
+        .toList();
     return new KafkaConnectState.ConnectorState(
         connector.getConnector().getName(),
         connector.getConnector().getType(),
         connector.getConnector().getStatus(),
-        connector.getTopics()
+        Optional.ofNullable(connector.getTopics()).orElse(List.of()),
+        tasks
     );
   }
 }

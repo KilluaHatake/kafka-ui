@@ -4,17 +4,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kafbat.ui.config.ClustersProperties;
 import io.kafbat.ui.connect.model.ClusterInfo;
+import io.kafbat.ui.connect.model.Connector;
+import io.kafbat.ui.connect.model.ConnectorStatus;
+import io.kafbat.ui.connect.model.ConnectorStatusConnector;
+import io.kafbat.ui.connect.model.ExpandedConnector;
+import io.kafbat.ui.connect.model.TaskStatus;
 import io.kafbat.ui.model.ConnectDTO;
 import io.kafbat.ui.model.ConnectorDTO;
 import io.kafbat.ui.model.ConnectorStateDTO;
 import io.kafbat.ui.model.ConnectorStatusDTO;
 import io.kafbat.ui.model.ConnectorTaskStatusDTO;
+import io.kafbat.ui.model.ConnectorTypeDTO;
 import io.kafbat.ui.model.TaskDTO;
 import io.kafbat.ui.model.TaskIdDTO;
 import io.kafbat.ui.model.TaskStatusDTO;
 import io.kafbat.ui.model.connect.InternalConnectorInfo;
+import io.kafbat.ui.service.metrics.scrape.KafkaConnectState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.junit.jupiter.api.Test;
@@ -104,6 +112,7 @@ class KafkaConnectMapperTest {
     connectDto.setFailedConnectorsCount(JsonNullable.of(failedConnectors));
     connectDto.setTasksCount(JsonNullable.of(connectors.size() * tasksPerConnector));
     connectDto.setFailedTasksCount(JsonNullable.of(failedTasks));
+    connectDto.setConsumerNamePattern(connectCluster.getConsumerNamePattern());
 
     KafkaConnectMapper mapper = new KafkaConnectMapperImpl();
     ConnectDTO kafkaConnect = mapper.toKafkaConnect(
@@ -116,5 +125,47 @@ class KafkaConnectMapperTest {
     assertThat(kafkaConnect).isNotNull();
     assertThat(kafkaConnect).isEqualTo(connectDto);
 
+  }
+
+  @Test
+  void toScrapeStateMapsTasksAndUpStatus() {
+    KafkaConnectMapper mapper = new KafkaConnectMapperImpl();
+
+    ExpandedConnector expanded = new ExpandedConnector()
+        .info(new Connector()
+            .name("orders-sink")
+            .type(Connector.TypeEnum.SINK)
+            .config(Map.of("connector.class", "Sink"))
+            .tasks(null))
+        .status(new ConnectorStatus()
+            .name("orders-sink")
+            .connector(new ConnectorStatusConnector()
+                .state(ConnectorStatusConnector.StateEnum.RUNNING)
+                .workerId("worker-1:8083"))
+            .tasks(List.of(
+                new TaskStatus().id(0).state(TaskStatus.StateEnum.RUNNING).workerId("worker-1:8083"),
+                new TaskStatus().id(1).state(TaskStatus.StateEnum.FAILED).workerId("worker-2:8083")
+            )));
+
+    ConnectDTO connectDto = new ConnectDTO()
+        .name("main-connect")
+        .version("7.6.0");
+
+    InternalConnectorInfo info = mapper.fromClient(connectDto, expanded, List.of("orders"));
+    KafkaConnectState state = mapper.toScrapeState(connectDto, List.of(info), true);
+
+    assertThat(state.isUp()).isTrue();
+    assertThat(state.getVersion()).isEqualTo("7.6.0");
+    assertThat(state.getScrapeFinishedAt()).isNotNull();
+    assertThat(state.getConnectors()).hasSize(1);
+
+    KafkaConnectState.ConnectorState connectorState = state.getConnectors().getFirst();
+    assertThat(connectorState.name()).isEqualTo("orders-sink");
+    assertThat(connectorState.connectorType()).isEqualTo(ConnectorTypeDTO.SINK);
+    assertThat(connectorState.topics()).containsExactly("orders");
+    assertThat(connectorState.tasks()).containsExactly(
+        new KafkaConnectState.TaskState(0, ConnectorTaskStatusDTO.RUNNING, "worker-1:8083"),
+        new KafkaConnectState.TaskState(1, ConnectorTaskStatusDTO.FAILED, "worker-2:8083")
+    );
   }
 }

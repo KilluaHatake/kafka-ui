@@ -91,7 +91,8 @@ public class KafkaConnectService {
 
   public Mono<ClusterInfo> getClusterInfo(KafkaCluster cluster, String connectName) {
     KafkaConnectState state = statisticsCache.get(cluster).getConnectStates().get(connectName);
-    if (state != null) {
+    if (state != null && state.isUp()
+        && state.getVersion() != null && !"Unknown".equals(state.getVersion())) {
       return Mono.just(kafkaConnectMapper.toClient(state));
     } else {
       return api(cluster, connectName).mono(KafkaConnectClientApi::getClusterInfo)
@@ -145,11 +146,13 @@ public class KafkaConnectService {
     return Flux.fromIterable(connectClusters.orElse(List.of())).flatMap(c ->
         getClusterInfo(cluster, c.getName()).map(info ->
                 kafkaConnectMapper.toKafkaConnect(c, List.of(), info, false)
-        ).onErrorResume((_) -> Mono.just(new ConnectDTO().name(c.getName())))
+        ).onErrorResume((_) -> Mono.just(new ConnectDTO()
+            .name(c.getName())
+            .address(c.getAddress())
+            .consumerNamePattern(c.getConsumerNamePattern())))
     ).flatMap(connect ->
-        getConnectorsWithErrorsSuppress(cluster, connect.getName())
-            .onErrorResume(_ -> Mono.just(Map.of()))
-            .flatMapMany(connectors ->
+        getConnectors(cluster, connect.getName())
+            .flatMap(connectors ->
                 Flux.fromIterable(connectors.entrySet())
                     .flatMap(e ->
                         getConnectorTopics(
@@ -160,7 +163,14 @@ public class KafkaConnectService {
                             kafkaConnectMapper.fromClient(connect, e.getValue(), topics.getTopics())
                         )
                     )
-            ).collectList().map(connectors -> kafkaConnectMapper.toScrapeState(connect, connectors))
+                    .collectList()
+                    .map(connectorsList -> kafkaConnectMapper.toScrapeState(connect, connectorsList, true))
+            )
+            .onErrorResume(th -> {
+              log.warn("Error while scraping Kafka Connect '{}' for cluster '{}'",
+                  connect.getName(), cluster.getName(), th);
+              return Mono.just(kafkaConnectMapper.toScrapeState(connect, List.of(), false));
+            })
     );
   }
 
