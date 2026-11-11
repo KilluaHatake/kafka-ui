@@ -211,7 +211,6 @@ export const clusterConnectsRelativePath = 'connects';
 export const clusterConnectorsRelativePath = 'connectors';
 export const kafkaConnectRelativePath = 'kafka-connect';
 export const kafkaConnectClustersRelativePath = 'clusters';
-export const kafkaConnectAlertsRelativePath = 'alerts';
 
 export const clusterConnectConnectorsRelativePath = `${RouteParams.connectName}/connectors`;
 export const clusterConnectConnectorRelativePath = `${clusterConnectsRelativePath}/${clusterConnectConnectorsRelativePath}/${RouteParams.connectorName}`;
@@ -236,10 +235,6 @@ export const kafkaConnectClustersPath = (
 export const clusterConnectorsPath = (
   clusterName: ClusterName = RouteParams.clusterName
 ) => `${kafkaConnectPath(clusterName)}/connectors`;
-
-export const kafkaConnectAlertsPath = (
-  clusterName: ClusterName = RouteParams.clusterName
-) => `${kafkaConnectPath(clusterName)}/alerts`;
 export const clusterConnectorNameSubPath = (
   clusterName: ClusterName = RouteParams.connectorName
 ) => {

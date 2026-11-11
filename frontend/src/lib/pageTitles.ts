@@ -16,7 +16,6 @@ import {
   clusterTopicSettingsPath,
   clusterTopicStatisticsPath,
   kafkaConnectClustersRelativePath,
-  kafkaConnectAlertsRelativePath,
 } from 'lib/paths';
 
 const APP_NAME = 'Kafbat UI';
@@ -32,9 +31,6 @@ export const getKafkaConnectPageTitle = (
 ) => {
   if (currentPath === kafkaConnectClustersRelativePath) {
     return buildPageTitle('Clusters', 'Kafka Connect', clusterName);
-  }
-  if (currentPath === kafkaConnectAlertsRelativePath) {
-    return buildPageTitle('Alert Settings', 'Kafka Connect', clusterName);
   }
 
   return buildPageTitle('Connectors', 'Kafka Connect', clusterName);

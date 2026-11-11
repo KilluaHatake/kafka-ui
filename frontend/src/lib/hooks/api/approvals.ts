@@ -18,7 +18,6 @@ export type ApprovalTargetType =
   | 'CONNECTOR_UPDATE'
   | 'CONNECTOR_ACTION'
   | 'BROKER_CONFIG_UPDATE'
-  | 'ALERT_SETTINGS_UPDATE'
   | 'CONSUMER_GROUP_DELETE'
   | 'CONNECTOR_RESET_OFFSETS';
 
@@ -48,14 +47,8 @@ export interface ApprovalProperties {
   requireTopicConfigUpdates: boolean;
   requireConnectorDeployments: boolean;
   requireBrokerConfigUpdates: boolean;
-  requireAlertSettingsUpdates: boolean;
   requireConsumerGroupDelete: boolean;
   requireConnectorResetOffsets: boolean;
-  alertNotificationsEnabled?: boolean;
-  sendSlackAlerts?: boolean;
-  sendEmailAlerts?: boolean;
-  slackWebhookUrl?: string;
-  slackChannel?: string;
   approverRoles: string[];
   directApplyRoles: string[];
 }
@@ -66,7 +59,6 @@ export interface ApprovalPermissions {
   canApprove: boolean;
   canViewApprovals?: boolean;
   canManageWorkflowSettings?: boolean;
-  canAccessAlertSettings?: boolean;
 }
 
 const getBaseUrl = () => BASE_PARAMS.basePath || '';
@@ -188,7 +180,7 @@ export const approvalsApi = {
     );
     // Fail-closed: if the server can't confirm a user's privileges, deny by
     // default. Granting everything here (the old behavior) would expose the
-    // Approve button, Workflow Settings, and Alert Settings to unauthenticated
+    // Approve button and Workflow Settings to unauthenticated
     // users or whenever the request errors (401/403/500).
     if (!res.ok) {
       return {
@@ -197,7 +189,6 @@ export const approvalsApi = {
         canApprove: false,
         canViewApprovals: false,
         canManageWorkflowSettings: false,
-        canAccessAlertSettings: false,
       };
     }
     return res.json();

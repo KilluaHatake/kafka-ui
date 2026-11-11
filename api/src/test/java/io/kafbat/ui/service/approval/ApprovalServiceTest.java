@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
-import io.kafbat.ui.config.auth.RoleBasedAccessControlProperties;
 import io.kafbat.ui.model.KafkaCluster;
 import io.kafbat.ui.model.TopicCreationDTO;
 import io.kafbat.ui.model.approval.ApprovalRequest;
@@ -23,7 +22,6 @@ import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
-import io.kafbat.ui.service.notification.NotificationService;
 import io.kafbat.ui.service.rbac.AccessControlService;
 import java.util.List;
 import java.util.Map;
@@ -42,10 +40,8 @@ class ApprovalServiceTest {
   private AuditService auditService;
   private TopicsService topicsService;
   private KafkaConnectService kafkaConnectService;
-  private NotificationService notificationService;
   private io.kafbat.ui.service.BrokerService brokerService;
   private io.kafbat.ui.service.ConsumerGroupService consumerGroupService;
-  private io.kafbat.ui.config.ConnectAlertProperties alertProperties;
   private AccessControlService accessControlService;
   private ApprovalService approvalService;
 
@@ -58,7 +54,6 @@ class ApprovalServiceTest {
     approvalProperties.setRequireTopicConfigUpdates(true);
     approvalProperties.setRequireConnectorDeployments(true);
     approvalProperties.setRequireBrokerConfigUpdates(true);
-    approvalProperties.setRequireAlertSettingsUpdates(true);
     approvalProperties.setRequireConsumerGroupDelete(true);
     approvalProperties.setRequireConnectorResetOffsets(true);
     approvalProperties.setApproverRoles(List.of("Architect", "Admin"));
@@ -69,18 +64,14 @@ class ApprovalServiceTest {
     auditService = mock(AuditService.class);
     topicsService = mock(TopicsService.class);
     kafkaConnectService = mock(KafkaConnectService.class);
-    notificationService = mock(NotificationService.class);
-    when(notificationService.sendApprovalAlert(any(), any(), any())).thenReturn(reactor.core.publisher.Mono.empty());
     brokerService = mock(io.kafbat.ui.service.BrokerService.class);
     consumerGroupService = mock(io.kafbat.ui.service.ConsumerGroupService.class);
-    alertProperties = new io.kafbat.ui.config.ConnectAlertProperties();
     accessControlService = mock(AccessControlService.class);
     when(accessControlService.isRbacEnabled()).thenReturn(true);
 
     cluster = KafkaCluster.builder().name("local-cluster").build();
 
     KafkaConfigSanitizer sanitizer = new KafkaConfigSanitizer(true, List.of());
-    RoleBasedAccessControlProperties rbacProperties = new RoleBasedAccessControlProperties();
 
     approvalService = new ApprovalService(
         approvalProperties,
@@ -89,13 +80,10 @@ class ApprovalServiceTest {
         auditService,
         topicsService,
         kafkaConnectService,
-        notificationService,
         brokerService,
         consumerGroupService,
-        alertProperties,
         accessControlService,
-        sanitizer,
-        rbacProperties
+        sanitizer
     );
   }
 
@@ -110,8 +98,6 @@ class ApprovalServiceTest {
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, architectUser)).isFalse();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, devUser)).isTrue();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, architectUser)).isFalse();
-    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.ALERT_SETTINGS_UPDATE, devUser)).isTrue();
-    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.ALERT_SETTINGS_UPDATE, architectUser)).isFalse();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, devUser)).isTrue();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, architectUser)).isFalse();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, devUser)).isTrue();
@@ -260,7 +246,6 @@ class ApprovalServiceTest {
     assertThat(approvalService.isApprover(supportUser)).isFalse();
     assertThat(approvalService.canManageWorkflowSettings(supportUser)).isFalse();
     assertThat(approvalService.canAccessApprovals("local-cluster", supportUser)).isFalse();
-    assertThat(approvalService.canAccessAlertSettings(supportUser, "local-cluster")).isFalse();
 
     final AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
     Permission devTopicPerm = new Permission();
@@ -275,13 +260,11 @@ class ApprovalServiceTest {
     assertThat(approvalService.isApprover(devUser)).isFalse();
     assertThat(approvalService.canManageWorkflowSettings(devUser)).isFalse();
     assertThat(approvalService.canAccessApprovals("local-cluster", devUser)).isTrue();
-    assertThat(approvalService.canAccessAlertSettings(devUser, "local-cluster")).isTrue();
 
     AuthenticatedUser archUser = new AuthenticatedUser("arch@company.com", List.of("Architect"));
     assertThat(approvalService.isApprover(archUser)).isTrue();
     assertThat(approvalService.canManageWorkflowSettings(archUser)).isTrue();
     assertThat(approvalService.canAccessApprovals("local-cluster", archUser)).isTrue();
-    assertThat(approvalService.canAccessAlertSettings(archUser, "local-cluster")).isTrue();
   }
 
   @Test
@@ -328,47 +311,5 @@ class ApprovalServiceTest {
 
     assertThat(sanitized.getMetadata().get("partitions")).isEqualTo(3);
     assertThat(sanitized.getMetadata().get("admin.password")).isEqualTo("******");
-  }
-
-  @Test
-  void resolvesApproverEmailsFromRbacProperties() {
-    RoleBasedAccessControlProperties rbac = new RoleBasedAccessControlProperties();
-    io.kafbat.ui.model.rbac.Role archRole = new io.kafbat.ui.model.rbac.Role();
-    archRole.setName("Architect");
-    archRole.setClusters(List.of("local-cluster"));
-
-    io.kafbat.ui.model.rbac.Subject user1 = new io.kafbat.ui.model.rbac.Subject();
-    user1.setProvider(io.kafbat.ui.model.rbac.provider.Provider.OAUTH_GOOGLE);
-    user1.setType("user");
-    user1.setValue("lead-architect@company.com");
-
-    io.kafbat.ui.model.rbac.Subject user2 = new io.kafbat.ui.model.rbac.Subject();
-    user2.setProvider(io.kafbat.ui.model.rbac.provider.Provider.OAUTH_GOOGLE);
-    user2.setType("user");
-    user2.setValue("another-arch@company.com");
-
-    archRole.setSubjects(List.of(user1, user2));
-    archRole.setPermissions(List.of());
-    rbac.setRoles(List.of(archRole));
-
-    KafkaConfigSanitizer sanitizer = new KafkaConfigSanitizer(true, List.of());
-    ApprovalService svc = new ApprovalService(
-        approvalProperties,
-        clustersStorage,
-        adminClientService,
-        auditService,
-        topicsService,
-        kafkaConnectService,
-        notificationService,
-        brokerService,
-        consumerGroupService,
-        alertProperties,
-        accessControlService,
-        sanitizer,
-        rbac
-    );
-
-    List<String> emails = svc.getApproverEmails("local-cluster");
-    assertThat(emails).containsExactlyInAnyOrder("lead-architect@company.com", "another-arch@company.com");
   }
 }

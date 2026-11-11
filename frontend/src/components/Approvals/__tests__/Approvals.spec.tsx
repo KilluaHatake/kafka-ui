@@ -102,7 +102,6 @@ describe('Approvals Page', () => {
         requireTopicConfigUpdates: true,
         requireConnectorDeployments: true,
         requireBrokerConfigUpdates: true,
-        requireAlertSettingsUpdates: true,
         requireConsumerGroupDelete: true,
         requireConnectorResetOffsets: true,
         approverRoles: ['Architect'],

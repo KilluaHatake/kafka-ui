@@ -4,7 +4,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.kafbat.ui.config.ApprovalProperties;
-import io.kafbat.ui.config.ConnectAlertProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
 import io.kafbat.ui.config.auth.RoleBasedAccessControlProperties;
 import io.kafbat.ui.exception.NotFoundException;
@@ -31,8 +30,6 @@ import io.kafbat.ui.service.MessagesService;
 import io.kafbat.ui.service.ReactiveAdminClient;
 import io.kafbat.ui.service.TopicsService;
 import io.kafbat.ui.service.audit.AuditService;
-import io.kafbat.ui.service.notification.ApprovalAlertPayload;
-import io.kafbat.ui.service.notification.NotificationService;
 import io.kafbat.ui.service.rbac.AccessControlService;
 import io.kafbat.ui.util.KafkaClientSslPropertiesUtil;
 import jakarta.annotation.PostConstruct;
@@ -82,14 +79,10 @@ public class ApprovalService implements Closeable {
   private final AuditService auditService;
   private final TopicsService topicsService;
   private final KafkaConnectService kafkaConnectService;
-  private final NotificationService notificationService;
   private final BrokerService brokerService;
   private final ConsumerGroupService consumerGroupService;
-  private final ConnectAlertProperties alertProperties;
   private final AccessControlService accessControlService;
   private final KafkaConfigSanitizer kafkaConfigSanitizer;
-  @Nullable
-  private final RoleBasedAccessControlProperties rbacProperties;
 
   // In-memory cache: clusterName -> (requestId -> ApprovalRequest)
   private final Map<String, Map<String, ApprovalRequest>> requestsCache = new ConcurrentHashMap<>();
@@ -113,7 +106,6 @@ public class ApprovalService implements Closeable {
       case TOPIC_CONFIG_UPDATE -> approvalProperties.isRequireTopicConfigUpdates();
       case CONNECTOR_CREATE, CONNECTOR_UPDATE, CONNECTOR_ACTION -> approvalProperties.isRequireConnectorDeployments();
       case BROKER_CONFIG_UPDATE -> approvalProperties.isRequireBrokerConfigUpdates();
-      case ALERT_SETTINGS_UPDATE -> approvalProperties.isRequireAlertSettingsUpdates();
       case CONSUMER_GROUP_DELETE -> approvalProperties.isRequireConsumerGroupDelete();
       case CONNECTOR_RESET_OFFSETS -> approvalProperties.isRequireConnectorResetOffsets();
     };
@@ -159,28 +151,6 @@ public class ApprovalService implements Closeable {
     return permissions.stream().anyMatch(this::hasMutationAction);
   }
 
-  public boolean canAccessAlertSettings(AuthenticatedUser user, @Nullable String clusterName) {
-    if (accessControlService != null && !accessControlService.isRbacEnabled()) {
-      return true;
-    }
-    if (isApprover(user) || isDirectApply(user)) {
-      return true;
-    }
-    if (accessControlService == null) {
-      return true;
-    }
-    List<Permission> permissions = accessControlService.getUserPermissions(user, clusterName);
-    if (permissions == null || permissions.isEmpty()) {
-      return false;
-    }
-    return permissions.stream().anyMatch(p ->
-        (p.getResource() == Resource.CONNECT
-            || p.getResource() == Resource.CLUSTERCONFIG
-            || p.getResource() == Resource.APPLICATIONCONFIG)
-            && hasMutationAction(p)
-    );
-  }
-
   private boolean hasMutationAction(Permission permission) {
     if (permission.getActions() == null) {
       return false;
@@ -222,47 +192,7 @@ public class ApprovalService implements Closeable {
     log.info("Created approval request {} for [{}] {} on cluster '{}' by '{}'",
         request.getId(), type, targetName, clusterName, requester.principal());
 
-    if (approvalProperties.isAlertNotificationsEnabled() && notificationService != null) {
-      ApprovalRequest sanitized = sanitizeForDisplay(request);
-      ApprovalAlertPayload payload = ApprovalAlertPayload.fromRequest(
-          sanitized,
-          approvalProperties.getApproverRoles()
-      );
-      List<String> approverEmails = getApproverEmails(clusterName);
-
-      var alertMono = notificationService.sendApprovalAlert(payload, approvalProperties, approverEmails);
-      if (alertMono != null) {
-        alertMono
-            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
-            .subscribe(
-                null,
-                th -> log.error("Failed to send approval alert for request {}", request.getId(), th)
-            );
-      }
-    }
-
     return Mono.just(request);
-  }
-
-  public List<String> getApproverEmails(String clusterName) {
-    if (rbacProperties == null || rbacProperties.getRoles() == null) {
-      return List.of();
-    }
-    List<String> approverRoles = approvalProperties.getApproverRoles();
-    if (approverRoles == null || approverRoles.isEmpty()) {
-      return List.of();
-    }
-    return rbacProperties.getRoles().stream()
-        .filter(role -> approverRoles.contains(role.getName()))
-        .filter(role -> role.getClusters() == null
-            || role.getClusters().contains(clusterName)
-            || role.getClusters().contains(".*"))
-        .filter(role -> role.getSubjects() != null)
-        .flatMap(role -> role.getSubjects().stream())
-        .filter(subject -> "user".equalsIgnoreCase(subject.getType()) && subject.getValue().contains("@"))
-        .map(Subject::getValue)
-        .distinct()
-        .toList();
   }
 
   public ApprovalRequest sanitizeForDisplay(ApprovalRequest request) {
@@ -495,88 +425,11 @@ public class ApprovalService implements Closeable {
         String configValue = (String) request.getMetadata().get("configValue");
         yield brokerService.updateBrokerConfigByName(cluster, brokerId, configName, configValue);
       }
-      case ALERT_SETTINGS_UPDATE -> {
-        applyAlertSettingsUpdate(request.getNewConfig());
-        yield Mono.empty();
-      }
       case CONSUMER_GROUP_DELETE -> consumerGroupService.deleteConsumerGroupById(cluster, request.getTargetName());
       case CONNECTOR_RESET_OFFSETS -> kafkaConnectService.resetConnectorOffsets(
           cluster, request.getConnectName(), request.getTargetName()
       );
     };
-  }
-
-  @SuppressWarnings("unchecked")
-  private void applyAlertSettingsUpdate(Map<String, Object> newConfig) {
-    if (newConfig == null) {
-      return;
-    }
-    if (newConfig.containsKey("enabled")) {
-      alertProperties.setEnabled(Boolean.parseBoolean(String.valueOf(newConfig.get("enabled"))));
-    }
-    if (newConfig.containsKey("pollingIntervalMs")) {
-      try {
-        alertProperties.setPollingIntervalMs(Long.parseLong(String.valueOf(newConfig.get("pollingIntervalMs"))));
-      } catch (NumberFormatException ignored) {
-        // ignored
-      }
-    }
-    if (newConfig.containsKey("throttleIntervalMinutes")) {
-      try {
-        alertProperties.setThrottleIntervalMinutes(
-            Integer.parseInt(String.valueOf(newConfig.get("throttleIntervalMinutes"))));
-      } catch (NumberFormatException ignored) {
-        // ignored
-      }
-    }
-    if (newConfig.get("slack") instanceof Map<?, ?> slackMap) {
-      if (slackMap.containsKey("enabled")) {
-        alertProperties.getSlack().setEnabled(Boolean.parseBoolean(String.valueOf(slackMap.get("enabled"))));
-      }
-      if (slackMap.containsKey("webhookUrl")) {
-        alertProperties.getSlack().setWebhookUrl((String) slackMap.get("webhookUrl"));
-      }
-      if (slackMap.containsKey("channel")) {
-        alertProperties.getSlack().setChannel((String) slackMap.get("channel"));
-      }
-    }
-    if (newConfig.get("email") instanceof Map<?, ?> emailMap) {
-      if (emailMap.containsKey("enabled")) {
-        alertProperties.getEmail().setEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("enabled"))));
-      }
-      if (emailMap.containsKey("smtpHost")) {
-        alertProperties.getEmail().setSmtpHost((String) emailMap.get("smtpHost"));
-      }
-      if (emailMap.containsKey("smtpPort")) {
-        try {
-          alertProperties.getEmail().setSmtpPort(Integer.parseInt(String.valueOf(emailMap.get("smtpPort"))));
-        } catch (NumberFormatException ignored) {
-          // ignored
-        }
-      }
-      if (emailMap.containsKey("username")) {
-        alertProperties.getEmail().setUsername((String) emailMap.get("username"));
-      }
-      if (emailMap.containsKey("password")) {
-        String pass = (String) emailMap.get("password");
-        if (pass != null && !pass.isBlank() && !pass.equals("********")) {
-          alertProperties.getEmail().setPassword(pass);
-        }
-      }
-      if (emailMap.containsKey("starttlsEnabled")) {
-        alertProperties.getEmail().setStarttlsEnabled(
-            Boolean.parseBoolean(String.valueOf(emailMap.get("starttlsEnabled"))));
-      }
-      if (emailMap.containsKey("sslEnabled")) {
-        alertProperties.getEmail().setSslEnabled(Boolean.parseBoolean(String.valueOf(emailMap.get("sslEnabled"))));
-      }
-      if (emailMap.containsKey("from")) {
-        alertProperties.getEmail().setFrom((String) emailMap.get("from"));
-      }
-      if (emailMap.get("recipients") instanceof List<?> list) {
-        alertProperties.getEmail().setRecipients(list.stream().map(String::valueOf).toList());
-      }
-    }
   }
 
   private void initTopicAndProducer(KafkaCluster cluster) {

@@ -50,12 +50,8 @@ class ApprovalControllerTest {
         .requireTopicConfigUpdates(false)
         .requireConnectorDeployments(true)
         .requireBrokerConfigUpdates(true)
-        .requireAlertSettingsUpdates(true)
         .requireConsumerGroupDelete(true)
         .requireConnectorResetOffsets(true)
-        .alertNotificationsEnabled(true)
-        .sendSlackAlerts(true)
-        .sendEmailAlerts(false)
         .directApplyRoles(List.of("Admin"))
         .approverRoles(List.of("Admin", "Lead"))
         .build();
@@ -69,11 +65,7 @@ class ApprovalControllerTest {
           assertThat(body.isRequireTopicCreation()).isTrue();
           assertThat(body.isRequireConnectorDeployments()).isTrue();
           assertThat(body.isRequireBrokerConfigUpdates()).isTrue();
-          assertThat(body.isRequireAlertSettingsUpdates()).isTrue();
           assertThat(body.isRequireConsumerGroupDelete()).isTrue();
-          assertThat(body.isAlertNotificationsEnabled()).isTrue();
-          assertThat(body.isSendSlackAlerts()).isTrue();
-          assertThat(body.isSendEmailAlerts()).isFalse();
           assertThat(body.isRequireConnectorResetOffsets()).isTrue();
           assertThat(body.getApproverRoles()).containsExactly("Admin", "Lead");
         })

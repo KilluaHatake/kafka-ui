@@ -107,7 +107,6 @@ public class ApprovalController extends AbstractController {
           perms.put("canApprove", approvalService.isApprover(user));
           perms.put("canViewApprovals", approvalService.canAccessApprovals(clusterName, user));
           perms.put("canManageWorkflowSettings", approvalService.canManageWorkflowSettings(user));
-          perms.put("canAccessAlertSettings", approvalService.canAccessAlertSettings(user, clusterName));
           return ResponseEntity.ok(perms);
         });
   }
@@ -152,18 +151,8 @@ public class ApprovalController extends AbstractController {
             approvalProperties.setRequireTopicConfigUpdates(newSettings.isRequireTopicConfigUpdates());
             approvalProperties.setRequireConnectorDeployments(newSettings.isRequireConnectorDeployments());
             approvalProperties.setRequireBrokerConfigUpdates(newSettings.isRequireBrokerConfigUpdates());
-            approvalProperties.setRequireAlertSettingsUpdates(newSettings.isRequireAlertSettingsUpdates());
             approvalProperties.setRequireConsumerGroupDelete(newSettings.isRequireConsumerGroupDelete());
             approvalProperties.setRequireConnectorResetOffsets(newSettings.isRequireConnectorResetOffsets());
-            approvalProperties.setAlertNotificationsEnabled(newSettings.isAlertNotificationsEnabled());
-            approvalProperties.setSendSlackAlerts(newSettings.isSendSlackAlerts());
-            approvalProperties.setSendEmailAlerts(newSettings.isSendEmailAlerts());
-            if (newSettings.getSlackWebhookUrl() != null) {
-              approvalProperties.setSlackWebhookUrl(newSettings.getSlackWebhookUrl());
-            }
-            if (newSettings.getSlackChannel() != null) {
-              approvalProperties.setSlackChannel(newSettings.getSlackChannel());
-            }
             if (newSettings.getDirectApplyRoles() != null) {
               approvalProperties.setDirectApplyRoles(newSettings.getDirectApplyRoles());
             }
