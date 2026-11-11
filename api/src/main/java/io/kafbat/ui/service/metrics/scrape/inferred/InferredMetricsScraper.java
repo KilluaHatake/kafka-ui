@@ -1,11 +1,17 @@
 package io.kafbat.ui.service.metrics.scrape.inferred;
 
 import com.google.common.annotations.VisibleForTesting;
+import io.kafbat.ui.model.ConnectorStateDTO;
+import io.kafbat.ui.model.ConnectorStatusDTO;
+import io.kafbat.ui.model.ConnectorTaskStatusDTO;
+import io.kafbat.ui.model.ConnectorTypeDTO;
+import io.kafbat.ui.service.metrics.scrape.KafkaConnectState;
 import io.kafbat.ui.service.metrics.scrape.ScrapedClusterState;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.core.metrics.Metric;
 import io.prometheus.metrics.model.snapshots.MetricSnapshot;
 import io.prometheus.metrics.model.snapshots.PrometheusNaming;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,20 +31,40 @@ public class InferredMetricsScraper {
   public static final String TOPIC_TAG = "topic";
   public static final String GROUP_TAG = "group";
   public static final String PARTITION_TAG = "partition";
+  public static final String CONNECT_TAG = "connect";
+  public static final String CONNECTOR_TAG = "connector";
+  public static final String TYPE_TAG = "type";
+  public static final String TASK_ID_TAG = "task_id";
+  public static final String STATE_TAG = "state";
+  public static final String VERSION_TAG = "version";
+  public static final String WORKER_ID_TAG = "worker_id";
   private ScrapedClusterState prevState = null;
 
   public synchronized Mono<InferredMetrics> scrape(ScrapedClusterState newState) {
-    var inferred = infer(prevState, newState);
+    return scrape(newState, List.of());
+  }
+
+  public synchronized Mono<InferredMetrics> scrape(ScrapedClusterState newState,
+                                                   Collection<KafkaConnectState> connectStates) {
+    var inferred = infer(prevState, newState, connectStates);
     this.prevState = newState;
     return Mono.just(inferred);
   }
 
   @VisibleForTesting
   static InferredMetrics infer(@Nullable ScrapedClusterState prevState, ScrapedClusterState newState) {
+    return infer(prevState, newState, List.of());
+  }
+
+  @VisibleForTesting
+  static InferredMetrics infer(@Nullable ScrapedClusterState prevState,
+                               ScrapedClusterState newState,
+                               Collection<KafkaConnectState> connectStates) {
     var registry = new MetricsRegistry();
     fillNodesMetrics(registry, newState);
     fillTopicMetrics(registry, newState);
     fillConsumerGroupsMetrics(registry, newState);
+    fillKafkaConnectMetrics(registry, connectStates);
     List<MetricSnapshot> metrics = registry.metrics.values().stream().map(Metric::collect).toList();
     log.debug("{} metric families inferred from cluster state", metrics.size());
     return new InferredMetrics(metrics);
@@ -229,5 +255,224 @@ public class InferredMetricsScraper {
 
       });
     });
+  }
+
+  private static void fillKafkaConnectMetrics(MetricsRegistry registry,
+                                              @Nullable Collection<KafkaConnectState> connectStates) {
+    if (connectStates == null || connectStates.isEmpty()) {
+      return;
+    }
+
+    registry.gauge(
+        "kafka_connect_count",
+        "Number of configured Kafka Connect instances",
+        List.of(),
+        List.of(),
+        connectStates.size()
+    );
+
+    for (KafkaConnectState connectState : connectStates) {
+      String connectName = connectState.getName();
+      String version = Optional.ofNullable(connectState.getVersion())
+          .filter(v -> !v.isBlank())
+          .orElse("Unknown");
+
+      registry.gauge(
+          "kafka_connect_up",
+          "Whether scraping the Kafka Connect instance succeeded (1 = up, 0 = down)",
+          List.of(CONNECT_TAG),
+          List.of(connectName),
+          connectState.isUp() ? 1 : 0
+      );
+
+      registry.gauge(
+          "kafka_connect_metadata",
+          "Metadata information about the Kafka Connect instance",
+          List.of(CONNECT_TAG, VERSION_TAG),
+          List.of(connectName, version),
+          1
+      );
+
+      if (!connectState.isUp()) {
+        continue;
+      }
+
+      if (connectState.getScrapeFinishedAt() != null) {
+        registry.gauge(
+            "kafka_connect_last_scrape_timestamp_seconds",
+            "Unix timestamp in seconds when the Kafka Connect instance was last scraped",
+            List.of(CONNECT_TAG),
+            List.of(connectName),
+            connectState.getScrapeFinishedAt().toEpochMilli() / 1000.0
+        );
+      }
+
+      List<KafkaConnectState.ConnectorState> connectors =
+          Optional.ofNullable(connectState.getConnectors()).orElse(List.of());
+      int connectorsCount = connectors.size();
+      int failedConnectorsCount = 0;
+      int totalTasksCount = 0;
+      int failedTasksCount = 0;
+
+      for (KafkaConnectState.ConnectorState connector : connectors) {
+        String connectorName = connector.name();
+        String connectorType = Optional.ofNullable(connector.connectorType())
+            .map(ConnectorTypeDTO::getValue)
+            .orElse(ConnectorTypeDTO.UNKNOWN.getValue());
+        List<KafkaConnectState.TaskState> tasks = Optional.ofNullable(connector.tasks()).orElse(List.of());
+
+        int connectorTasksCount = tasks.size();
+        int connectorFailedTasks = 0;
+        int connectorRunningTasks = 0;
+        for (KafkaConnectState.TaskState task : tasks) {
+          ConnectorTaskStatusDTO taskState = Optional.ofNullable(task.state())
+              .orElse(ConnectorTaskStatusDTO.UNASSIGNED);
+          if (taskState == ConnectorTaskStatusDTO.FAILED) {
+            connectorFailedTasks++;
+          } else if (taskState == ConnectorTaskStatusDTO.RUNNING) {
+            connectorRunningTasks++;
+          }
+
+          String taskId = String.valueOf(task.id());
+          String taskWorkerId = Optional.ofNullable(task.workerId()).orElse("");
+
+          for (ConnectorTaskStatusDTO possibleState : ConnectorTaskStatusDTO.values()) {
+            registry.gauge(
+                "kafka_connect_task_status",
+                "Current state of the Kafka Connect task (1 for active state, 0 for inactive states)",
+                List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG, TASK_ID_TAG, STATE_TAG),
+                List.of(connectName, connectorName, connectorType, taskId, possibleState.getValue()),
+                possibleState == taskState ? 1 : 0
+            );
+          }
+
+          registry.gauge(
+              "kafka_connect_task_failed",
+              "Whether the Kafka Connect task is in FAILED state (1 = failed, 0 = not failed)",
+              List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG, TASK_ID_TAG),
+              List.of(connectName, connectorName, connectorType, taskId),
+              taskState == ConnectorTaskStatusDTO.FAILED ? 1 : 0
+          );
+
+          registry.gauge(
+              "kafka_connect_task_metadata",
+              "Metadata information about the Kafka Connect task",
+              List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG, TASK_ID_TAG, WORKER_ID_TAG),
+              List.of(connectName, connectorName, connectorType, taskId, taskWorkerId),
+              1
+          );
+        }
+
+        ConnectorStateDTO rawState = Optional.ofNullable(connector.status())
+            .map(ConnectorStatusDTO::getState)
+            .orElse(ConnectorStateDTO.UNASSIGNED);
+        ConnectorStateDTO effectiveState =
+            (rawState == ConnectorStateDTO.RUNNING && connectorFailedTasks > 0)
+                ? ConnectorStateDTO.TASK_FAILED
+                : rawState;
+        boolean connectorFailed = effectiveState == ConnectorStateDTO.FAILED
+            || effectiveState == ConnectorStateDTO.TASK_FAILED;
+
+        if (connectorFailed) {
+          failedConnectorsCount++;
+        }
+        totalTasksCount += connectorTasksCount;
+        failedTasksCount += connectorFailedTasks;
+
+        for (ConnectorStateDTO possibleState : ConnectorStateDTO.values()) {
+          registry.gauge(
+              "kafka_connect_connector_status",
+              "Current state of the Kafka Connect connector (1 for active state, 0 for inactive states)",
+              List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG, STATE_TAG),
+              List.of(connectName, connectorName, connectorType, possibleState.getValue()),
+              possibleState == effectiveState ? 1 : 0
+          );
+        }
+
+        registry.gauge(
+            "kafka_connect_connector_failed",
+            "Whether the Kafka Connect connector or any task is failed (1 = failed, 0 = ok)",
+            List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG),
+            List.of(connectName, connectorName, connectorType),
+            connectorFailed ? 1 : 0
+        );
+
+        registry.gauge(
+            "kafka_connect_connector_tasks_count",
+            "Number of tasks for the Kafka Connect connector",
+            List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG),
+            List.of(connectName, connectorName, connectorType),
+            connectorTasksCount
+        );
+
+        registry.gauge(
+            "kafka_connect_connector_tasks_failed_count",
+            "Number of failed tasks for the Kafka Connect connector",
+            List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG),
+            List.of(connectName, connectorName, connectorType),
+            connectorFailedTasks
+        );
+
+        registry.gauge(
+            "kafka_connect_connector_tasks_running_count",
+            "Number of running tasks for the Kafka Connect connector",
+            List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG),
+            List.of(connectName, connectorName, connectorType),
+            connectorRunningTasks
+        );
+
+        int topicsCount = Optional.ofNullable(connector.topics()).map(List::size).orElse(0);
+        registry.gauge(
+            "kafka_connect_connector_topics_count",
+            "Number of topics associated with the Kafka Connect connector",
+            List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG),
+            List.of(connectName, connectorName, connectorType),
+            topicsCount
+        );
+
+        String connectorWorkerId = Optional.ofNullable(connector.status())
+            .map(ConnectorStatusDTO::getWorkerId)
+            .orElse("");
+        registry.gauge(
+            "kafka_connect_connector_metadata",
+            "Metadata information about the Kafka Connect connector",
+            List.of(CONNECT_TAG, CONNECTOR_TAG, TYPE_TAG, WORKER_ID_TAG),
+            List.of(connectName, connectorName, connectorType, connectorWorkerId),
+            1
+        );
+      }
+
+      registry.gauge(
+          "kafka_connect_connectors_count",
+          "Number of connectors in the Kafka Connect instance",
+          List.of(CONNECT_TAG),
+          List.of(connectName),
+          connectorsCount
+      );
+
+      registry.gauge(
+          "kafka_connect_failed_connectors_count",
+          "Number of connectors in FAILED or TASK_FAILED state in the Kafka Connect instance",
+          List.of(CONNECT_TAG),
+          List.of(connectName),
+          failedConnectorsCount
+      );
+
+      registry.gauge(
+          "kafka_connect_tasks_count",
+          "Total number of tasks across all connectors in the Kafka Connect instance",
+          List.of(CONNECT_TAG),
+          List.of(connectName),
+          totalTasksCount
+      );
+
+      registry.gauge(
+          "kafka_connect_failed_tasks_count",
+          "Total number of failed tasks across all connectors in the Kafka Connect instance",
+          List.of(CONNECT_TAG),
+          List.of(connectName),
+          failedTasksCount
+      );
+    }
   }
 }
