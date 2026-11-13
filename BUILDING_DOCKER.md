@@ -69,18 +69,27 @@ Gradle produces two JARs in `api/build/libs/`:
 
 When building with [`api/Dockerfile`](api/Dockerfile):
 - The Docker build context is **`api`** (the last argument), **not** the repository root `.`.
-- Therefore, `--build-arg JAR_FILE=...` **must be relative to `api/`** (for example `build/libs/api-0.0.1-SNAPSHOT.jar`), **not** `api/build/libs/api-0.0.1-SNAPSHOT.jar`.
+- Therefore, `--build-arg JAR_FILE=...` **must be relative to `api/`** (e.g. `build/libs/api-<version>.jar`), **not** `api/build/libs/...`.
 - Passing `api/build/libs/...` with context `api` causes Docker to look for `api/api/build/libs/...` and fail with:
   ```text
-  COPY failed: file not found in build context: stat api/build/libs/api-0.0.1-SNAPSHOT.jar: file does not exist
+  COPY failed: file not found in build context: stat api/build/libs/api-<version>.jar: file does not exist
   ```
 
 | Format | Build Command Snippet | Result |
 | :--- | :--- | :--- |
-| ❌ **Incorrect** | `--build-arg JAR_FILE=api/build/libs/api-0.0.1-SNAPSHOT.jar api` | Fails (`api/api/build/libs/...` not found) |
-| ✅ **Correct** | `--build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar api` | Succeeds |
+| ❌ **Incorrect** | `--build-arg JAR_FILE=api/build/libs/api-<version>.jar api` | Fails (`api/api/build/libs/...` not found) |
+| ✅ **Correct** | `--build-arg JAR_FILE="${JAR_FILE}" api` | Succeeds (resolves dynamically to `build/libs/api-<version>.jar`) |
 
-- Also avoid `ls api/build/libs/api-*.jar | head -n 1`, because `-plain.jar` sorts alphabetically before `.jar` (`-` precedes `.` in ASCII).
+- **Dynamically resolving the JAR**: Avoid hardcoding version numbers (like `0.0.1-SNAPSHOT`). In Gradle, `api/build/libs/` contains both the runnable fat JAR and a `-plain.jar` library JAR. Note that `api-*-plain.jar` sorts alphabetically before `api-*.jar` (`-` precedes `.`), so filter out `-plain.jar`:
+
+  - **macOS / Linux (bash/zsh):**
+    ```bash
+    JAR_FILE=$(cd api && ls build/libs/api-*.jar | grep -v -- '-plain\.jar$' | head -n 1)
+    ```
+  - **Windows (PowerShell):**
+    ```powershell
+    $JAR_FILE = "build/libs/" + (Get-ChildItem api/build/libs/api-*.jar -Exclude *-plain.jar | Select-Object -First 1 -ExpandProperty Name)
+    ```
 
 [`api/Dockerfile`](api/Dockerfile) uses `azul/zulu-openjdk-alpine`, which publishes a multi-architecture manifest supporting both **`linux/amd64`** and **`linux/arm64`**.
 
@@ -129,20 +138,24 @@ docker build --platform linux/amd64 \
 
 **Windows (PowerShell):**
 ```powershell
+$JAR_FILE = "build/libs/" + (Get-ChildItem api/build/libs/api-*.jar -Exclude *-plain.jar | Select-Object -First 1 -ExpandProperty Name)
+
 docker build --platform linux/amd64 `
   -t kafbat-ui:dev `
   -f api/Dockerfile `
-  --build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar `
+  --build-arg JAR_FILE="$JAR_FILE" `
   api
 ```
 
 #### 3. Cross-Platform Build for `linux/arm64` (e.g., from x86_64 Linux/Windows to AWS Graviton / ARM64)
 
 ```bash
+JAR_FILE=$(cd api && ls build/libs/api-*.jar | grep -v -- '-plain\.jar$' | head -n 1)
+
 docker build --platform linux/arm64 \
   -t kafbat-ui:dev \
   -f api/Dockerfile \
-  --build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar \
+  --build-arg JAR_FILE="${JAR_FILE}" \
   api
 ```
 
@@ -154,12 +167,14 @@ docker build --platform linux/arm64 \
 To build and publish a single multi-arch image manifest to a container registry (requires the `docker buildx` plugin):
 
 ```bash
+JAR_FILE=$(cd api && ls build/libs/api-*.jar | grep -v -- '-plain\.jar$' | head -n 1)
+
 docker buildx create --name multiarch --use 2>/dev/null || docker buildx use multiarch
 
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t <your-registry-host>/kafbat-ui:<tag> \
   -f api/Dockerfile \
-  --build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar \
+  --build-arg JAR_FILE="${JAR_FILE}" \
   --push \
   api
 ```
@@ -187,7 +202,8 @@ ghcr.io/kafbat/kafka-ui:<version>
 If you prefer a Debian-based `eclipse-temurin:25` image instead of Alpine/Zulu, [`Dockerfile.local`](Dockerfile.local) expects the **repository root `.`** as the build context:
 
 ```bash
-docker build -t kafbat-ui:dev -f Dockerfile.local --build-arg JAR_FILE=api/build/libs/api-0.0.1-SNAPSHOT.jar .
+JAR_FILE=$(ls api/build/libs/api-*.jar | grep -v -- '-plain\.jar$' | head -n 1)
+docker build -t kafbat-ui:dev -f Dockerfile.local --build-arg JAR_FILE="${JAR_FILE}" .
 ```
 
 ---
@@ -257,23 +273,26 @@ Determine your target EC2 instance CPU architecture:
 - **x86_64 / Intel / AMD (e.g., `t3`, `m5`, `c5`)**: Use `--platform linux/amd64`
 - **ARM64 / AWS Graviton (e.g., `t4g`, `c6g`, `c7g`, `m7g`)**: Use `--platform linux/arm64`
 
+**macOS / Linux:**
 ```bash
-# Note: build/libs/... is relative to the build context 'api'
-docker build --platform linux/amd64 \
-  -t kafbat-ui:dev \
-  -f api/Dockerfile \
-  --build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar \
-  api
-```
-
-*(Or determine the JAR dynamically without hardcoding the version)*:
-```bash
+# Dynamically resolve JAR path relative to the 'api' build context
 JAR_FILE=$(cd api && ls build/libs/api-*.jar | grep -v -- '-plain\.jar$' | head -n 1)
 
 docker build --platform linux/amd64 \
   -t kafbat-ui:dev \
   -f api/Dockerfile \
   --build-arg JAR_FILE="${JAR_FILE}" \
+  api
+```
+
+**Windows (PowerShell):**
+```powershell
+$JAR_FILE = "build/libs/" + (Get-ChildItem api/build/libs/api-*.jar -Exclude *-plain.jar | Select-Object -First 1 -ExpandProperty Name)
+
+docker build --platform linux/amd64 `
+  -t kafbat-ui:dev `
+  -f api/Dockerfile `
+  --build-arg JAR_FILE="$JAR_FILE" `
   api
 ```
 
