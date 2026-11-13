@@ -70,7 +70,16 @@ Gradle produces two JARs in `api/build/libs/`:
 When building with [`api/Dockerfile`](api/Dockerfile):
 - The Docker build context is **`api`** (the last argument), **not** the repository root `.`.
 - Therefore, `--build-arg JAR_FILE=...` **must be relative to `api/`** (for example `build/libs/api-0.0.1-SNAPSHOT.jar`), **not** `api/build/libs/api-0.0.1-SNAPSHOT.jar`.
-- Passing `api/build/libs/...` with context `api` causes Docker to look for `api/api/build/libs/...` and fail with `COPY failed: file not found in build context`.
+- Passing `api/build/libs/...` with context `api` causes Docker to look for `api/api/build/libs/...` and fail with:
+  ```text
+  COPY failed: file not found in build context: stat api/build/libs/api-0.0.1-SNAPSHOT.jar: file does not exist
+  ```
+
+| Format | Build Command Snippet | Result |
+| :--- | :--- | :--- |
+| ❌ **Incorrect** | `--build-arg JAR_FILE=api/build/libs/api-0.0.1-SNAPSHOT.jar api` | Fails (`api/api/build/libs/...` not found) |
+| ✅ **Correct** | `--build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar api` | Succeeds |
+
 - Also avoid `ls api/build/libs/api-*.jar | head -n 1`, because `-plain.jar` sorts alphabetically before `.jar` (`-` precedes `.` in ASCII).
 
 [`api/Dockerfile`](api/Dockerfile) uses `azul/zulu-openjdk-alpine`, which publishes a multi-architecture manifest supporting both **`linux/amd64`** and **`linux/arm64`**.
@@ -231,14 +240,76 @@ docker tag kafbat-ui:dev <your-registry-host>/kafbat-ui:<tag>
 docker push <your-registry-host>/kafbat-ui:<tag>
 ```
 
-### Export & Load for Offline / Air-Gapped Servers
+---
 
-If transferring the built image directly to another host (for example, an `amd64` server built from an Apple Silicon Mac):
+### End-to-End Workflow: Export and Deploy to Remote EC2 / VM via Tarball
+
+For deployments on remote EC2 instances (e.g. internal instances accessed via VPN) or air-gapped hosts without direct registry access:
+
+#### Step 1: Compile the Fat JAR with Bundled Frontend
+```bash
+export JAVA_HOME="/opt/homebrew/opt/openjdk@25"
+./gradlew clean build -Pinclude-frontend=true -x test
+```
+
+#### Step 2: Build the Target Docker Image
+Determine your target EC2 instance CPU architecture:
+- **x86_64 / Intel / AMD (e.g., `t3`, `m5`, `c5`)**: Use `--platform linux/amd64`
+- **ARM64 / AWS Graviton (e.g., `t4g`, `c6g`, `c7g`, `m7g`)**: Use `--platform linux/arm64`
 
 ```bash
-# Save compressed image archive
-docker save kafbat-ui:dev | gzip > kafbat-ui-dev.tgz
+# Note: build/libs/... is relative to the build context 'api'
+docker build --platform linux/amd64 \
+  -t kafbat-ui:dev \
+  -f api/Dockerfile \
+  --build-arg JAR_FILE=build/libs/api-0.0.1-SNAPSHOT.jar \
+  api
+```
 
-# Load on the target machine
-docker load -i kafbat-ui-dev.tgz
+*(Or determine the JAR dynamically without hardcoding the version)*:
+```bash
+JAR_FILE=$(cd api && ls build/libs/api-*.jar | grep -v -- '-plain\.jar$' | head -n 1)
+
+docker build --platform linux/amd64 \
+  -t kafbat-ui:dev \
+  -f api/Dockerfile \
+  --build-arg JAR_FILE="${JAR_FILE}" \
+  api
+```
+
+#### Step 3: Export to Compressed Tarball
+Piping to `gzip` compresses the tarball from ~380 MB down to ~130 MB, drastically speeding up transfer times over VPN / SSH:
+
+```bash
+# Save compressed archive (recommended)
+docker save kafbat-ui:dev | gzip > kafbat-ui-dev.tar.gz
+
+# Or save as uncompressed tar:
+# docker save kafbat-ui:dev -o kafbat-ui-dev.tar
+```
+
+#### Step 4: Transfer to EC2 via SCP
+```bash
+scp -i /path/to/ec2-key.pem kafbat-ui-dev.tar.gz ec2-user@<ec2-private-ip>:~/
+```
+
+#### Step 5: Load and Run Container on EC2
+SSH into the EC2 instance:
+
+```bash
+# 1. Load the Docker image from tarball
+docker load -i kafbat-ui-dev.tar.gz
+
+# 2. Verify the image is loaded
+docker images kafbat-ui:dev
+
+# 3. Run Kafbat UI container
+docker run -d \
+  --name kafbat-ui \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e DYNAMIC_CONFIG_ENABLED=true \
+  -e KAFKA_CLUSTERS_0_NAME=prod \
+  -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS="kafka-broker-1:9092,kafka-broker-2:9092" \
+  kafbat-ui:dev
 ```
