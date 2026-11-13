@@ -1,0 +1,29 @@
+services:
+  kafbat-ui:
+    image: kafbat-ui:dev
+    environment:
+      JAVA_OPTS: "-Xms128m -Xmx384m"
+      KAFKA_APPROVAL_ENABLED: "true"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "info,health,prometheus"
+
+  kafka-connect0:
+    container_name: kafka-connect0
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms128m -Xmx384m"
+      KAFKA_JVM_PERFORMANCE_OPTS: "-server"
+
+  kafka0:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms128m -Xmx256m"
+
+  kafka1:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms64m -Xmx128m"
+
+  schemaregistry0:
+    environment:
+      SCHEMA_REGISTRY_HEAP_OPTS: "-Xms64m -Xmx128m"
+
+  schemaregistry1:
+    environment:
+      SCHEMA_REGISTRY_HEAP_OPTS: "-Xms32m -Xmx64m"
