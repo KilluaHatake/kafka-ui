@@ -84,4 +84,24 @@ class ApprovalControllerTest {
         .expectError(AccessDeniedException.class)
         .verify();
   }
+
+  @Test
+  void testRbacEnabledEmptyUserFailsClosed() {
+    io.kafbat.ui.service.rbac.AccessControlService acs = mock(io.kafbat.ui.service.rbac.AccessControlService.class);
+    when(acs.isRbacEnabled()).thenReturn(true);
+    controller.setAccessControlService(acs);
+
+    StepVerifier.create(controller.getApprovalSettings())
+        .expectError(AccessDeniedException.class)
+        .verify();
+
+    StepVerifier.create(controller.getPermissions("local-cluster"))
+        .assertNext(resp -> {
+          assertThat(resp.getBody()).isNotNull();
+          assertThat(resp.getBody().get("canApprove")).isEqualTo(false);
+          assertThat(resp.getBody().get("canViewApprovals")).isEqualTo(false);
+          assertThat(resp.getBody().get("canManageWorkflowSettings")).isEqualTo(false);
+        })
+        .verifyComplete();
+  }
 }

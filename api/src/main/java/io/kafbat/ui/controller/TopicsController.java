@@ -12,6 +12,7 @@ import io.kafbat.ui.api.TopicsApi;
 import io.kafbat.ui.config.ClustersProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
 import io.kafbat.ui.exception.ApprovalRequiredException;
+import io.kafbat.ui.exception.ValidationException;
 import io.kafbat.ui.mapper.ClusterMapper;
 import io.kafbat.ui.model.FullConnectorInfoDTO;
 import io.kafbat.ui.model.InternalTopic;
@@ -35,6 +36,7 @@ import io.kafbat.ui.model.approval.ApprovalRequest;
 import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
 import io.kafbat.ui.model.rbac.permission.AclAction;
+import io.kafbat.ui.model.rbac.permission.ApplicationConfigAction;
 import io.kafbat.ui.model.rbac.permission.AuditAction;
 import io.kafbat.ui.service.KafkaConnectService;
 import io.kafbat.ui.service.TopicsService;
@@ -88,9 +90,14 @@ public class TopicsController extends AbstractController implements TopicsApi, M
 
       return validateAccess(context).then(
           AccessControlService.getUser()
-              .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+              .switchIfEmpty(Mono.defer(() -> {
+                if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                  return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+                }
+                return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+              }))
               .flatMap(user -> {
-                if (approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, user)) {
+                if (approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, clusterName, user)) {
                   Map<String, Object> newConfig = new HashMap<>();
                   if (topicCreation.getConfigs() != null) {
                     newConfig.putAll(topicCreation.getConfigs());
@@ -164,6 +171,10 @@ public class TopicsController extends AbstractController implements TopicsApi, M
   public Mono<ResponseEntity<Void>> deleteTopic(
       String clusterName, String topicName, ServerWebExchange exchange) {
 
+    if (approvalService.isApprovalTopic(topicName)) {
+      return Mono.error(new ValidationException("Cannot delete internal approval topic: " + topicName));
+    }
+
     var context = AccessContext.builder()
         .cluster(clusterName)
         .topicActions(topicName, DELETE)
@@ -209,6 +220,8 @@ public class TopicsController extends AbstractController implements TopicsApi, M
 
     if (auditService.isAuditTopic(getCluster(clusterName), topicName)) {
       contextBuilder.auditActions(AuditAction.VIEW);
+    } else if (approvalService.isApprovalTopic(topicName)) {
+      contextBuilder.applicationConfigActions(ApplicationConfigAction.VIEW);
     } else {
       contextBuilder.topicActions(topicName, VIEW);
     }
@@ -298,6 +311,10 @@ public class TopicsController extends AbstractController implements TopicsApi, M
       String clusterName, String topicName, @Valid Mono<TopicUpdateDTO> topicUpdate,
       ServerWebExchange exchange) {
 
+    if (approvalService.isApprovalTopic(topicName)) {
+      return Mono.error(new ValidationException("Cannot modify internal approval topic: " + topicName));
+    }
+
     var context = AccessContext.builder()
         .cluster(clusterName)
         .topicActions(topicName, VIEW, EDIT)
@@ -306,9 +323,14 @@ public class TopicsController extends AbstractController implements TopicsApi, M
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .flatMap(user -> {
-              if (approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CONFIG_UPDATE, user)) {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CONFIG_UPDATE, clusterName, user)) {
                 return topicUpdate.flatMap(updateDto -> {
                   Map<String, Object> newConfig = new HashMap<>();
                   if (updateDto.getConfigs() != null) {

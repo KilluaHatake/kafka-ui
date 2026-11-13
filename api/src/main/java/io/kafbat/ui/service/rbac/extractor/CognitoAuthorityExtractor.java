@@ -49,13 +49,17 @@ public class CognitoAuthorityExtractor implements ProviderAuthorityExtractor {
 
   private Set<String> extractUsernameRoles(AccessControlService acs, DefaultOAuth2User principal) {
     String email = principal.getAttribute("email");
+    Object emailVerifiedAttr = principal.getAttribute("email_verified");
+    boolean emailVerified = Boolean.TRUE.equals(emailVerifiedAttr)
+        || "true".equalsIgnoreCase(String.valueOf(emailVerifiedAttr));
+
     Set<String> rolesByUsername = acs.getRoles()
         .stream()
         .filter(r -> r.getSubjects()
             .stream()
             .filter(s -> s.getProvider().equals(Provider.OAUTH_COGNITO))
             .filter(s -> "user".equalsIgnoreCase(s.getType()) || "email".equalsIgnoreCase(s.getType()))
-            .anyMatch(s -> s.matches(principal.getName()) || (email != null && s.matches(email))))
+            .anyMatch(s -> s.matches(principal.getName()) || (email != null && emailVerified && s.matches(email))))
         .map(Role::getName)
         .collect(Collectors.toSet());
 

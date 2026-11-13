@@ -101,9 +101,14 @@ public class KafkaConnectController extends AbstractController implements KafkaC
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .flatMap(user -> {
-              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, user)) {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_CREATE, clusterName, user)) {
                 return connector.flatMap(newConn -> {
                   @SuppressWarnings("unchecked")
                   Map<String, Object> cfgMap = newConn.getConfig() instanceof Map<?, ?> m
@@ -236,10 +241,15 @@ public class KafkaConnectController extends AbstractController implements KafkaC
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .flatMap(user ->
                 requestBody.flatMap(newConfig -> {
-                  if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_UPDATE, user)) {
+                  if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_UPDATE, clusterName, user)) {
                     return kafkaConnectService.getConnectorConfig(getCluster(clusterName), connectName, connectorName)
                         .onErrorReturn(Map.of())
                         .flatMap(oldConfig -> approvalService.createRequest(
@@ -278,9 +288,14 @@ public class KafkaConnectController extends AbstractController implements KafkaC
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .flatMap(user -> {
-              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_ACTION, user)) {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_ACTION, clusterName, user)) {
                 return approvalService.createRequest(
                     clusterName,
                     ApprovalTargetType.CONNECTOR_ACTION,
@@ -359,10 +374,18 @@ public class KafkaConnectController extends AbstractController implements KafkaC
   public Mono<ResponseEntity<ConnectorPluginConfigValidationResponseDTO>> validateConnectorPluginConfig(
       String clusterName, String connectName, String pluginName, @Valid Mono<Map<String, Object>> requestBody,
       ServerWebExchange exchange) {
-    return kafkaConnectService
-        .validateConnectorPluginConfig(
-            getCluster(clusterName), connectName, pluginName, requestBody)
-        .map(ResponseEntity::ok);
+    var context = AccessContext.builder()
+        .cluster(clusterName)
+        .connectActions(connectName, ConnectAction.VIEW)
+        .operationName("validateConnectorPluginConfig")
+        .build();
+
+    return validateAccess(context).then(
+        kafkaConnectService
+            .validateConnectorPluginConfig(
+                getCluster(clusterName), connectName, pluginName, requestBody)
+            .map(ResponseEntity::ok)
+    ).doOnEach(sig -> audit(context, sig));
   }
 
   private Comparator<FullConnectorInfoDTO> getConnectorsComparator(ConnectorColumnsToSortDTO orderBy) {
@@ -403,9 +426,14 @@ public class KafkaConnectController extends AbstractController implements KafkaC
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .flatMap(user -> {
-              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, user)) {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, clusterName, user)) {
                 return approvalService.createRequest(
                     clusterName,
                     ApprovalTargetType.CONNECTOR_RESET_OFFSETS,

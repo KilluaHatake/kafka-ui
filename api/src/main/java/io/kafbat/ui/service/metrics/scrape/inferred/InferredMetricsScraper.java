@@ -272,7 +272,7 @@ public class InferredMetricsScraper {
     );
 
     for (KafkaConnectState connectState : connectStates) {
-      String connectName = connectState.getName();
+      String connectName = Optional.ofNullable(connectState.getName()).orElse("");
       String version = Optional.ofNullable(connectState.getVersion())
           .filter(v -> !v.isBlank())
           .orElse("Unknown");
@@ -315,7 +315,7 @@ public class InferredMetricsScraper {
       int failedTasksCount = 0;
 
       for (KafkaConnectState.ConnectorState connector : connectors) {
-        String connectorName = connector.name();
+        String connectorName = Optional.ofNullable(connector.name()).orElse("");
         String connectorType = Optional.ofNullable(connector.connectorType())
             .map(ConnectorTypeDTO::getValue)
             .orElse(ConnectorTypeDTO.UNKNOWN.getValue());

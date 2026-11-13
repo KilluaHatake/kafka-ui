@@ -149,9 +149,14 @@ public class BrokersController extends AbstractController implements BrokersApi,
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .flatMap(user -> brokerConfig.flatMap(bci -> {
-              if (approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, user)) {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.BROKER_CONFIG_UPDATE, clusterName, user)) {
                 return brokerService.getBrokerConfig(getCluster(clusterName), id)
                     .filter(c -> name.equals(c.getName()))
                     .next()

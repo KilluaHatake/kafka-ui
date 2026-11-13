@@ -21,11 +21,13 @@ import io.kafbat.ui.model.SmartFilterTestExecutionResultDTO;
 import io.kafbat.ui.model.TopicMessageEventDTO;
 import io.kafbat.ui.model.TopicSerdeSuggestionDTO;
 import io.kafbat.ui.model.rbac.AccessContext;
+import io.kafbat.ui.model.rbac.permission.ApplicationConfigAction;
 import io.kafbat.ui.model.rbac.permission.AuditAction;
 import io.kafbat.ui.model.rbac.permission.TopicAction;
 import io.kafbat.ui.serde.api.Serde;
 import io.kafbat.ui.service.DeserializationService;
 import io.kafbat.ui.service.MessagesService;
+import io.kafbat.ui.service.approval.ApprovalService;
 import io.kafbat.ui.service.mcp.McpTool;
 import java.util.List;
 import java.util.Optional;
@@ -47,6 +49,7 @@ public class MessagesController extends AbstractController implements MessagesAp
 
   private final MessagesService messagesService;
   private final DeserializationService deserializationService;
+  private final ApprovalService approvalService;
 
   @Override
   public Mono<ResponseEntity<Void>> deleteTopicMessages(
@@ -111,6 +114,8 @@ public class MessagesController extends AbstractController implements MessagesAp
 
     if (auditService.isAuditTopic(getCluster(clusterName), topicName)) {
       contextBuilder.auditActions(AuditAction.VIEW);
+    } else if (approvalService.isApprovalTopic(topicName)) {
+      contextBuilder.applicationConfigActions(ApplicationConfigAction.VIEW);
     } else {
       contextBuilder.topicActions(topicName, MESSAGES_READ);
     }

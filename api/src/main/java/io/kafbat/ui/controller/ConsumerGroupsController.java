@@ -70,9 +70,14 @@ public class ConsumerGroupsController extends AbstractController implements Cons
 
     return validateAccess(context).then(
         AccessControlService.getUser()
-            .defaultIfEmpty(new AuthenticatedUser("system", java.util.List.of("Architect")))
+            .switchIfEmpty(Mono.defer(() -> {
+              if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+                return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+              }
+              return Mono.just(new AuthenticatedUser("unknown", java.util.List.of()));
+            }))
             .<ResponseEntity<Void>>flatMap(user -> {
-              if (approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, user)) {
+              if (approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, clusterName, user)) {
                 return approvalService.createRequest(
                     clusterName,
                     ApprovalTargetType.CONSUMER_GROUP_DELETE,

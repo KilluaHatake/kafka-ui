@@ -5,7 +5,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.google.common.annotations.VisibleForTesting;
 import io.kafbat.ui.config.ApprovalProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
-import io.kafbat.ui.config.auth.RoleBasedAccessControlProperties;
 import io.kafbat.ui.exception.NotFoundException;
 import io.kafbat.ui.exception.ValidationException;
 import io.kafbat.ui.model.ConnectorActionDTO;
@@ -18,8 +17,7 @@ import io.kafbat.ui.model.approval.ApprovalStatus;
 import io.kafbat.ui.model.approval.ApprovalTargetType;
 import io.kafbat.ui.model.rbac.AccessContext;
 import io.kafbat.ui.model.rbac.Permission;
-import io.kafbat.ui.model.rbac.Resource;
-import io.kafbat.ui.model.rbac.Subject;
+import io.kafbat.ui.model.rbac.Role;
 import io.kafbat.ui.service.AdminClientService;
 import io.kafbat.ui.service.BrokerService;
 import io.kafbat.ui.service.ClustersStorage;
@@ -44,9 +42,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -96,7 +96,44 @@ public class ApprovalService implements Closeable {
     }
   }
 
-  public boolean isApprovalRequired(ApprovalTargetType type, AuthenticatedUser user) {
+  public Set<String> getUserRolesForCluster(@Nullable String clusterName, AuthenticatedUser user) {
+    if (user == null || user.groups() == null || user.groups().isEmpty()) {
+      return Set.of();
+    }
+    if (accessControlService == null || !accessControlService.isRbacEnabled()
+        || accessControlService.getRoles() == null || accessControlService.getRoles().isEmpty()) {
+      return Set.copyOf(user.groups());
+    }
+    if (clusterName == null) {
+      return Set.copyOf(user.groups());
+    }
+    return accessControlService.getRoles().stream()
+        .filter(role -> role != null && role.getName() != null && user.groups().contains(role.getName()))
+        .filter(role -> role.getClusters() == null || role.getClusters().stream()
+            .anyMatch(c -> c.equalsIgnoreCase(clusterName) || ".*".equals(c) || clusterName.matches(c)))
+        .map(Role::getName)
+        .collect(Collectors.toSet());
+  }
+
+  public boolean isDirectApply(@Nullable String clusterName, AuthenticatedUser user) {
+    Set<String> roles = getUserRolesForCluster(clusterName, user);
+    return roles.stream().anyMatch(role -> approvalProperties.getDirectApplyRoles().contains(role));
+  }
+
+  public boolean isDirectApply(AuthenticatedUser user) {
+    return isDirectApply(null, user);
+  }
+
+  public boolean isApprover(@Nullable String clusterName, AuthenticatedUser user) {
+    Set<String> roles = getUserRolesForCluster(clusterName, user);
+    return roles.stream().anyMatch(role -> approvalProperties.getApproverRoles().contains(role));
+  }
+
+  public boolean isApprover(AuthenticatedUser user) {
+    return isApprover(null, user);
+  }
+
+  public boolean isApprovalRequired(ApprovalTargetType type, @Nullable String clusterName, AuthenticatedUser user) {
     if (!approvalProperties.isEnabled()) {
       return false;
     }
@@ -114,17 +151,11 @@ public class ApprovalService implements Closeable {
       return false;
     }
 
-    return !isDirectApply(user);
+    return !isDirectApply(clusterName, user);
   }
 
-  public boolean isDirectApply(AuthenticatedUser user) {
-    return user.groups() != null && user.groups().stream()
-        .anyMatch(role -> approvalProperties.getDirectApplyRoles().contains(role));
-  }
-
-  public boolean isApprover(AuthenticatedUser user) {
-    return user.groups() != null && user.groups().stream()
-        .anyMatch(role -> approvalProperties.getApproverRoles().contains(role));
+  public boolean isApprovalRequired(ApprovalTargetType type, AuthenticatedUser user) {
+    return isApprovalRequired(type, null, user);
   }
 
   public boolean canManageWorkflowSettings(AuthenticatedUser user) {
@@ -138,7 +169,7 @@ public class ApprovalService implements Closeable {
     if (accessControlService != null && !accessControlService.isRbacEnabled()) {
       return true;
     }
-    if (isApprover(user) || isDirectApply(user)) {
+    if (isApprover(clusterName, user) || isDirectApply(clusterName, user)) {
       return true;
     }
     if (accessControlService == null) {
@@ -249,14 +280,19 @@ public class ApprovalService implements Closeable {
       String id,
       AuthenticatedUser approver
   ) {
-    if (!isApprover(approver)) {
+    if (!isApprover(cluster.getName(), approver)) {
       return Mono.error(new AccessDeniedException("User is not authorized to approve configuration requests"));
     }
 
     return getRequest(cluster.getName(), id).flatMap(request -> {
-      if (request.getStatus() != ApprovalStatus.PENDING) {
-        return Mono.error(new ValidationException(
-            "Only PENDING requests can be approved. Current status: " + request.getStatus()));
+      synchronized (request) {
+        if (request.getStatus() != ApprovalStatus.PENDING) {
+          return Mono.error(new ValidationException(
+              "Only PENDING requests can be approved. Current status: " + request.getStatus()));
+        }
+        request.setStatus(ApprovalStatus.APPROVED);
+        request.setApproverEmail(approver.principal());
+        request.setUpdatedAt(DateTimeFormatter.ISO_INSTANT.format(Instant.now()));
       }
 
       return executeApprovedAction(cluster, request)
@@ -308,20 +344,23 @@ public class ApprovalService implements Closeable {
       AuthenticatedUser approver,
       @Nullable String reason
   ) {
-    if (!isApprover(approver)) {
+    if (!isApprover(cluster.getName(), approver)) {
       return Mono.error(new AccessDeniedException("User is not authorized to reject configuration requests"));
     }
 
     return getRequest(cluster.getName(), id).map(request -> {
-      if (request.getStatus() != ApprovalStatus.PENDING) {
-        throw new ValidationException("Only PENDING requests can be rejected. Current status: " + request.getStatus());
-      }
+      synchronized (request) {
+        if (request.getStatus() != ApprovalStatus.PENDING) {
+          throw new ValidationException(
+              "Only PENDING requests can be rejected. Current status: " + request.getStatus());
+        }
 
-      String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
-      request.setStatus(ApprovalStatus.REJECTED);
-      request.setApproverEmail(approver.principal());
-      request.setRejectionReason(reason);
-      request.setUpdatedAt(now);
+        String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+        request.setStatus(ApprovalStatus.REJECTED);
+        request.setApproverEmail(approver.principal());
+        request.setRejectionReason(reason);
+        request.setUpdatedAt(now);
+      }
 
       requestsCache.computeIfAbsent(cluster.getName(), k -> new ConcurrentHashMap<>()).put(request.getId(), request);
       writeRecordToTopic(cluster.getName(), request);
@@ -354,14 +393,17 @@ public class ApprovalService implements Closeable {
     return getRequest(cluster.getName(), id).flatMap(request -> {
       boolean isRequester = request.getRequesterEmail() != null
           && request.getRequesterEmail().equalsIgnoreCase(user.principal());
-      boolean approver = isApprover(user);
+      boolean approver = isApprover(cluster.getName(), user);
 
       if (!isRequester && !approver) {
         return Mono.error(new AccessDeniedException("User is not authorized to delete this request"));
       }
-      if (request.getStatus() != ApprovalStatus.PENDING) {
-        return Mono.error(new ValidationException(
-            "Only PENDING requests can be deleted. Current status: " + request.getStatus()));
+      synchronized (request) {
+        if (request.getStatus() != ApprovalStatus.PENDING) {
+          return Mono.error(new ValidationException(
+              "Only PENDING requests can be deleted. Current status: " + request.getStatus()));
+        }
+        request.setStatus(ApprovalStatus.CANCELLED);
       }
 
       requestsCache.computeIfPresent(cluster.getName(), (k, map) -> {
@@ -373,6 +415,15 @@ public class ApprovalService implements Closeable {
       log.info("Approval request {} deleted by '{}'", id, user.principal());
       return Mono.empty();
     });
+  }
+
+  public boolean isApprovalTopic(String topicName) {
+    if (topicName == null) {
+      return false;
+    }
+    String configured = approvalProperties != null ? approvalProperties.getTopic() : null;
+    String defaultTopic = ApprovalProperties.DEFAULT_APPROVAL_TOPIC;
+    return (configured != null && configured.equals(topicName)) || defaultTopic.equals(topicName);
   }
 
   @SuppressWarnings("unchecked")

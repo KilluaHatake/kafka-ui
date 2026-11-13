@@ -32,6 +32,16 @@ public class ApprovalController extends AbstractController {
   private final ApprovalService approvalService;
   private final ApprovalProperties approvalProperties;
 
+  private Mono<AuthenticatedUser> getAuthenticatedUser() {
+    return AccessControlService.getUser()
+        .switchIfEmpty(Mono.defer(() -> {
+          if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+            return Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect")));
+          }
+          return Mono.error(new AccessDeniedException("User is not authenticated or authorized"));
+        }));
+  }
+
   @GetMapping("/api/clusters/{clusterName}/approvals")
   public Mono<ResponseEntity<List<ApprovalRequest>>> getApprovals(
       @PathVariable String clusterName,
@@ -39,8 +49,7 @@ public class ApprovalController extends AbstractController {
       @RequestParam(required = false) ApprovalTargetType type
   ) {
     getCluster(clusterName);
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> {
           if (!approvalService.canAccessApprovals(clusterName, user)) {
             return Mono.error(new AccessDeniedException("User is not authorized to view approval requests"));
@@ -58,8 +67,7 @@ public class ApprovalController extends AbstractController {
       @PathVariable String id
   ) {
     getCluster(clusterName);
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> {
           if (!approvalService.canAccessApprovals(clusterName, user)) {
             return Mono.error(new AccessDeniedException("User is not authorized to view approval requests"));
@@ -76,9 +84,9 @@ public class ApprovalController extends AbstractController {
       @PathVariable String id
   ) {
     var cluster = getCluster(clusterName);
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> approvalService.approveRequest(cluster, id, user))
+        .map(approvalService::sanitizeForDisplay)
         .map(ResponseEntity::ok);
   }
 
@@ -90,25 +98,42 @@ public class ApprovalController extends AbstractController {
   ) {
     var cluster = getCluster(clusterName);
     String reason = body != null ? body.get("reason") : null;
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> approvalService.rejectRequest(cluster, id, user, reason))
+        .map(approvalService::sanitizeForDisplay)
         .map(ResponseEntity::ok);
   }
 
   @GetMapping("/api/clusters/{clusterName}/approvals/permissions")
   public Mono<ResponseEntity<Map<String, Object>>> getPermissions(@PathVariable String clusterName) {
     return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
         .map(user -> {
           Map<String, Object> perms = new java.util.HashMap<>();
           perms.put("username", user.principal());
           perms.put("roles", user.groups() != null ? user.groups() : java.util.List.of());
-          perms.put("canApprove", approvalService.isApprover(user));
+          perms.put("canApprove", approvalService.isApprover(clusterName, user));
           perms.put("canViewApprovals", approvalService.canAccessApprovals(clusterName, user));
           perms.put("canManageWorkflowSettings", approvalService.canManageWorkflowSettings(user));
           return ResponseEntity.ok(perms);
-        });
+        })
+        .switchIfEmpty(Mono.defer(() -> {
+          if (accessControlService == null || !accessControlService.isRbacEnabled()) {
+            Map<String, Object> perms = new java.util.HashMap<>();
+            perms.put("username", "system");
+            perms.put("roles", java.util.List.of("Architect"));
+            perms.put("canApprove", true);
+            perms.put("canViewApprovals", true);
+            perms.put("canManageWorkflowSettings", true);
+            return Mono.just(ResponseEntity.ok(perms));
+          }
+          Map<String, Object> perms = new java.util.HashMap<>();
+          perms.put("username", "");
+          perms.put("roles", java.util.List.of());
+          perms.put("canApprove", false);
+          perms.put("canViewApprovals", false);
+          perms.put("canManageWorkflowSettings", false);
+          return Mono.just(ResponseEntity.ok(perms));
+        }));
   }
 
   @DeleteMapping("/api/clusters/{clusterName}/approvals/{id}")
@@ -117,16 +142,14 @@ public class ApprovalController extends AbstractController {
       @PathVariable String id
   ) {
     var cluster = getCluster(clusterName);
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> approvalService.deleteRequest(cluster, id, user))
         .thenReturn(ResponseEntity.noContent().build());
   }
 
   @GetMapping("/api/admin/approval-settings")
   public Mono<ResponseEntity<ApprovalSettingsDto>> getApprovalSettings() {
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> {
           if (!approvalService.canManageWorkflowSettings(user)) {
             return Mono.error(new AccessDeniedException("User is not authorized to view approval settings"));
@@ -139,8 +162,7 @@ public class ApprovalController extends AbstractController {
   public Mono<ResponseEntity<ApprovalSettingsDto>> updateApprovalSettings(
       @RequestBody ApprovalSettingsDto newSettings
   ) {
-    return AccessControlService.getUser()
-        .switchIfEmpty(Mono.just(new AuthenticatedUser("system", java.util.List.of("Architect"))))
+    return getAuthenticatedUser()
         .flatMap(user -> {
           if (!approvalService.canManageWorkflowSettings(user)) {
             return Mono.error(new AccessDeniedException("User is not authorized to modify approval settings"));

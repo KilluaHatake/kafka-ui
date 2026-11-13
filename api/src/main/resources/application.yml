@@ -4,6 +4,10 @@ server:
     max-header-size: 64KB
     max-initial-line-length: 16KB
 
+http:
+  error:
+    excludeStackTraces: true
+
 auth:
   type: DISABLED
 

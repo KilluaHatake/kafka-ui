@@ -312,4 +312,32 @@ class ApprovalServiceTest {
     assertThat(sanitized.getMetadata().get("partitions")).isEqualTo(3);
     assertThat(sanitized.getMetadata().get("admin.password")).isEqualTo("******");
   }
+
+  @Test
+  void isApproverAndDirectApplyRespectClusterScoping() {
+    io.kafbat.ui.model.rbac.Role devRole = new io.kafbat.ui.model.rbac.Role();
+    devRole.setName("Admin");
+    devRole.setClusters(List.of("dev-cluster"));
+
+    when(accessControlService.getRoles()).thenReturn(List.of(devRole));
+
+    AuthenticatedUser adminUser = new AuthenticatedUser("admin@company.com", List.of("Admin"));
+
+    // Allowed on dev-cluster
+    assertThat(approvalService.isApprover("dev-cluster", adminUser)).isTrue();
+    assertThat(approvalService.isDirectApply("dev-cluster", adminUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, "dev-cluster", adminUser)).isFalse();
+
+    // Denied on prod-cluster
+    assertThat(approvalService.isApprover("prod-cluster", adminUser)).isFalse();
+    assertThat(approvalService.isDirectApply("prod-cluster", adminUser)).isFalse();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, "prod-cluster", adminUser)).isTrue();
+  }
+
+  @Test
+  void isApprovalTopicMatchesDefaultAndConfiguredTopic() {
+    assertThat(approvalService.isApprovalTopic("__kui-approval-requests")).isTrue();
+    assertThat(approvalService.isApprovalTopic("normal-topic")).isFalse();
+    assertThat(approvalService.isApprovalTopic(null)).isFalse();
+  }
 }
