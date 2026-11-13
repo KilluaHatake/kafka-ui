@@ -33,6 +33,7 @@ import {
   showServerError,
   showSuccessAlert,
 } from 'lib/errorHandling';
+import { isApprovalResponse } from 'lib/hooks/api/approvals';
 import { ClusterName } from 'lib/interfaces/cluster';
 import {
   TopicFormData,
@@ -178,11 +179,17 @@ const formatTopicCreation = (form: TopicFormData): TopicCreation => {
 export function useCreateTopicMutation(clusterName: ClusterName) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (data: TopicFormData) =>
-      api.createTopic({
+    mutationFn: async (data: TopicFormData) => {
+      const resp = await api.createTopicRaw({
         clusterName,
         topicCreation: formatTopicCreation(data),
-      }),
+      });
+      if (resp.raw.status === 202) {
+        const body = await resp.raw.json();
+        return { ...body, status: 202 };
+      }
+      return resp.value();
+    },
     onSuccess: () => {
       client.invalidateQueries({ queryKey: topicKeys.all(clusterName) });
     },
@@ -226,16 +233,23 @@ const formatTopicUpdate = (form: TopicFormDataRaw): TopicUpdate => {
 export function useUpdateTopic(props: GetTopicDetailsRequest) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (data: TopicFormDataRaw) => {
-      return api.updateTopic({
+    mutationFn: async (data: TopicFormDataRaw) => {
+      const resp = await api.updateTopicRaw({
         ...props,
         topicUpdate: formatTopicUpdate(data),
       });
+      if (resp.raw.status === 202) {
+        const body = await resp.raw.json();
+        return { ...body, status: 202 };
+      }
+      return resp.value();
     },
-    onSuccess: () => {
-      showSuccessAlert({
-        message: `Topic successfully updated.`,
-      });
+    onSuccess: (res: any) => {
+      if (!isApprovalResponse(res)) {
+        showSuccessAlert({
+          message: `Topic successfully updated.`,
+        });
+      }
       client.invalidateQueries({ queryKey: topicKeys.all(props.clusterName) });
     },
   });

@@ -2,7 +2,7 @@ import { diff as DiffEditor } from 'react-ace';
 import 'ace-builds/src-noconflict/ace';
 import 'ace-builds/src-noconflict/mode-json5';
 import 'ace-builds/src-noconflict/mode-protobuf';
-import 'ace-builds/src-noconflict/theme-textmate';
+import 'ace-builds/src-noconflict/theme-tomorrow';
 import React from 'react';
 import { IDiffEditorProps } from 'react-ace/lib/diff';
 import { SchemaType } from 'generated-sources';
@@ -32,7 +32,7 @@ const DiffViewer = React.forwardRef<DiffEditor | null, DiffViewerProps>(
               ? 'json5'
               : 'protobuf'
           }
-          theme="textmate"
+          theme="tomorrow"
           tabSize={2}
           width="100%"
           height={`${autoHeight}px`}

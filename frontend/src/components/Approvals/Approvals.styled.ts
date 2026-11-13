@@ -198,6 +198,23 @@ export const DiffContainer = styled.div`
   border: 1px solid ${({ theme }) => theme.table.td.borderTop};
   border-radius: 6px;
   overflow: hidden;
+
+  .ace_editor,
+  .ace-tomorrow,
+  .ace_scroller {
+    background-color: ${({ theme }) => theme.default.backgroundColor} !important;
+  }
+
+  .ace_gutter {
+    background-color: ${({ theme }) =>
+      theme.ksqlDb.query.editor.layer.backgroundColor} !important;
+    color: ${({ theme }) => theme.default.color.normal} !important;
+  }
+
+  .ace_line,
+  .ace_content {
+    color: ${({ theme }) => theme.default.color.normal} !important;
+  }
 `;
 
 export const DiffHeader = styled.div`
