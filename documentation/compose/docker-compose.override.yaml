@@ -9,6 +9,7 @@ services:
   kafka-connect0:
     container_name: kafka-connect0
     environment:
+      CONNECT_REST_PORT: 8083
       KAFKA_HEAP_OPTS: "-Xms128m -Xmx384m"
       KAFKA_JVM_PERFORMANCE_OPTS: "-server"
 
