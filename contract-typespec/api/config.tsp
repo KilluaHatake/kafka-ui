@@ -228,6 +228,20 @@ model ApplicationConfig {
           consoleAuditEnabled?: boolean;
           auditTopicProperties?: Record<string>;
         };
+        approval?: {
+          enabled?: boolean;
+          topic?: string;
+          partitions?: int32;
+          topicProperties?: Record<string>;
+          requireTopicCreation?: boolean;
+          requireTopicConfigUpdates?: boolean;
+          requireConnectorDeployments?: boolean;
+          requireBrokerConfigUpdates?: boolean;
+          requireConsumerGroupDelete?: boolean;
+          requireConnectorResetOffsets?: boolean;
+          directApplyRoles?: string[];
+          approverRoles?: string[];
+        };
       }[];
     };
   };

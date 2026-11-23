@@ -43,6 +43,8 @@ export interface ApprovalRequest {
 export interface ApprovalProperties {
   enabled: boolean;
   topic: string;
+  partitions?: number;
+  topicProperties?: Record<string, string>;
   requireTopicCreation: boolean;
   requireTopicConfigUpdates: boolean;
   requireConnectorDeployments: boolean;
@@ -144,8 +146,11 @@ export const approvalsApi = {
     return res.json();
   },
 
-  getSettings: async (): Promise<ApprovalProperties> => {
-    const res = await fetch(`${getBaseUrl()}/api/admin/approval-settings`, {
+  getSettings: async (clusterName?: string): Promise<ApprovalProperties> => {
+    const url = clusterName
+      ? `${getBaseUrl()}/api/clusters/${encodeURIComponent(clusterName)}/approval-settings`
+      : `${getBaseUrl()}/api/admin/approval-settings`;
+    const res = await fetch(url, {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -156,9 +161,13 @@ export const approvalsApi = {
   },
 
   updateSettings: async (
-    settings: ApprovalProperties
+    settings: ApprovalProperties,
+    clusterName?: string
   ): Promise<ApprovalProperties> => {
-    const res = await fetch(`${getBaseUrl()}/api/admin/approval-settings`, {
+    const url = clusterName
+      ? `${getBaseUrl()}/api/clusters/${encodeURIComponent(clusterName)}/approval-settings`
+      : `${getBaseUrl()}/api/admin/approval-settings`;
+    const res = await fetch(url, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -315,24 +324,33 @@ export function useRejectRequest(clusterName: string) {
   });
 }
 
-export function useApprovalSettings(enabled: boolean = true) {
+export function useApprovalSettings(clusterName?: string, enabled: boolean = true) {
   return useQuery({
-    queryKey: ['admin', 'approvalSettings'],
-    queryFn: () => approvalsApi.getSettings(),
+    queryKey: clusterName
+      ? ['clusters', clusterName, 'approvalSettings']
+      : ['admin', 'approvalSettings'],
+    queryFn: () => approvalsApi.getSettings(clusterName),
     enabled,
     retry: false,
   });
 }
 
-export function useUpdateApprovalSettings() {
+export function useUpdateApprovalSettings(clusterName?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (settings: ApprovalProperties) =>
-      approvalsApi.updateSettings(settings),
+      approvalsApi.updateSettings(settings, clusterName),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['admin', 'approvalSettings'],
+        queryKey: clusterName
+          ? ['clusters', clusterName, 'approvalSettings']
+          : ['admin', 'approvalSettings'],
       });
+      if (clusterName) {
+        queryClient.invalidateQueries({
+          queryKey: ['clusters', clusterName, 'approvals'],
+        });
+      }
     },
   });
 }

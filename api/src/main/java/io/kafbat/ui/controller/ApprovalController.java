@@ -147,8 +147,53 @@ public class ApprovalController extends AbstractController {
         .thenReturn(ResponseEntity.noContent().build());
   }
 
+  @GetMapping("/api/clusters/{clusterName}/approval-settings")
+  public Mono<ResponseEntity<ApprovalSettingsDto>> getClusterApprovalSettings(
+      @PathVariable String clusterName
+  ) {
+    getCluster(clusterName);
+    return getAuthenticatedUser()
+        .flatMap(user -> {
+          if (!approvalService.canManageWorkflowSettings(clusterName, user)) {
+            return Mono.error(new AccessDeniedException("User is not authorized to view approval settings"));
+          }
+          var props = approvalService.getApprovalProperties(clusterName);
+          return Mono.just(ResponseEntity.ok(ApprovalSettingsDto.fromProperties(props)));
+        });
+  }
+
+  @PutMapping("/api/clusters/{clusterName}/approval-settings")
+  public Mono<ResponseEntity<ApprovalSettingsDto>> updateClusterApprovalSettings(
+      @PathVariable String clusterName,
+      @RequestBody ApprovalSettingsDto newSettings
+  ) {
+    var cluster = getCluster(clusterName);
+    return getAuthenticatedUser()
+        .flatMap(user -> {
+          if (!approvalService.canManageWorkflowSettings(clusterName, user)) {
+            return Mono.error(new AccessDeniedException("User is not authorized to modify approval settings"));
+          }
+          if (newSettings != null) {
+            var props = cluster.getOriginalProperties().getApproval();
+            if (props == null) {
+              props = approvalProperties.toBuilder().build();
+              cluster.getOriginalProperties().setApproval(props);
+            }
+            newSettings.applyTo(props);
+            return Mono.just(ResponseEntity.ok(ApprovalSettingsDto.fromProperties(props)));
+          }
+          var props = approvalService.getApprovalProperties(clusterName);
+          return Mono.just(ResponseEntity.ok(ApprovalSettingsDto.fromProperties(props)));
+        });
+  }
+
   @GetMapping("/api/admin/approval-settings")
-  public Mono<ResponseEntity<ApprovalSettingsDto>> getApprovalSettings() {
+  public Mono<ResponseEntity<ApprovalSettingsDto>> getApprovalSettings(
+      @RequestParam(required = false) String clusterName
+  ) {
+    if (clusterName != null && !clusterName.isBlank()) {
+      return getClusterApprovalSettings(clusterName);
+    }
     return getAuthenticatedUser()
         .flatMap(user -> {
           if (!approvalService.canManageWorkflowSettings(user)) {
@@ -158,31 +203,31 @@ public class ApprovalController extends AbstractController {
         });
   }
 
+  public Mono<ResponseEntity<ApprovalSettingsDto>> getApprovalSettings() {
+    return getApprovalSettings((String) null);
+  }
+
   @PutMapping("/api/admin/approval-settings")
   public Mono<ResponseEntity<ApprovalSettingsDto>> updateApprovalSettings(
+      @RequestParam(required = false) String clusterName,
       @RequestBody ApprovalSettingsDto newSettings
   ) {
+    if (clusterName != null && !clusterName.isBlank()) {
+      return updateClusterApprovalSettings(clusterName, newSettings);
+    }
     return getAuthenticatedUser()
         .flatMap(user -> {
           if (!approvalService.canManageWorkflowSettings(user)) {
             return Mono.error(new AccessDeniedException("User is not authorized to modify approval settings"));
           }
           if (newSettings != null) {
-            approvalProperties.setEnabled(newSettings.isEnabled());
-            approvalProperties.setRequireTopicCreation(newSettings.isRequireTopicCreation());
-            approvalProperties.setRequireTopicConfigUpdates(newSettings.isRequireTopicConfigUpdates());
-            approvalProperties.setRequireConnectorDeployments(newSettings.isRequireConnectorDeployments());
-            approvalProperties.setRequireBrokerConfigUpdates(newSettings.isRequireBrokerConfigUpdates());
-            approvalProperties.setRequireConsumerGroupDelete(newSettings.isRequireConsumerGroupDelete());
-            approvalProperties.setRequireConnectorResetOffsets(newSettings.isRequireConnectorResetOffsets());
-            if (newSettings.getDirectApplyRoles() != null) {
-              approvalProperties.setDirectApplyRoles(newSettings.getDirectApplyRoles());
-            }
-            if (newSettings.getApproverRoles() != null) {
-              approvalProperties.setApproverRoles(newSettings.getApproverRoles());
-            }
+            newSettings.applyTo(approvalProperties);
           }
           return Mono.just(ResponseEntity.ok(ApprovalSettingsDto.fromProperties(approvalProperties)));
         });
+  }
+
+  public Mono<ResponseEntity<ApprovalSettingsDto>> updateApprovalSettings(ApprovalSettingsDto newSettings) {
+    return updateApprovalSettings(null, newSettings);
   }
 }

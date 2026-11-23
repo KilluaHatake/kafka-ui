@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.kafbat.ui.config.ApprovalProperties;
+import io.kafbat.ui.config.ClustersProperties;
 import io.kafbat.ui.config.auth.AuthenticatedUser;
 import io.kafbat.ui.model.KafkaCluster;
 import io.kafbat.ui.model.TopicCreationDTO;
@@ -339,5 +340,85 @@ class ApprovalServiceTest {
     assertThat(approvalService.isApprovalTopic("__kui-approval-requests")).isTrue();
     assertThat(approvalService.isApprovalTopic("normal-topic")).isFalse();
     assertThat(approvalService.isApprovalTopic(null)).isFalse();
+  }
+
+  @Test
+  void clusterSpecificApprovalPropertiesOverrideGlobal() {
+    var clusterProps = new ClustersProperties.Cluster();
+    var clusterApproval = ApprovalProperties.builder()
+        .enabled(true)
+        .topic("__cluster-approval-topic")
+        .partitions(2)
+        .topicProperties(Map.of("cleanup.policy", "compact"))
+        .requireTopicCreation(true)
+        .requireTopicConfigUpdates(true)
+        .requireConnectorDeployments(true)
+        .requireConsumerGroupDelete(true)
+        .requireConnectorResetOffsets(true)
+        .approverRoles(List.of("DE"))
+        .directApplyRoles(List.of("DE"))
+        .build();
+    clusterProps.setApproval(clusterApproval);
+
+    var customCluster = KafkaCluster.builder()
+        .name("custom-cluster")
+        .originalProperties(clusterProps)
+        .build();
+    when(clustersStorage.getClusterByName("custom-cluster")).thenReturn(java.util.Optional.of(customCluster));
+
+    // Global settings have requireTopicCreation=false for testing contrast
+    approvalProperties.setRequireTopicCreation(false);
+
+    assertThat(approvalService.getApprovalProperties("custom-cluster")).isSameAs(clusterApproval);
+    assertThat(approvalService.getApprovalProperties("non-existent-cluster")).isSameAs(approvalProperties);
+
+    AuthenticatedUser deUser = new AuthenticatedUser("de@company.com", List.of("DE"));
+    AuthenticatedUser devUser = new AuthenticatedUser("dev@company.com", List.of("Developer"));
+
+    // For custom-cluster, DE has direct apply and approver permissions
+    assertThat(approvalService.isApprover("custom-cluster", deUser)).isTrue();
+    assertThat(approvalService.isDirectApply("custom-cluster", deUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, "custom-cluster", deUser)).isFalse();
+
+    // Developer requires approval on custom-cluster
+    assertThat(approvalService.isApprover("custom-cluster", devUser)).isFalse();
+    assertThat(approvalService.isDirectApply("custom-cluster", devUser)).isFalse();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, "custom-cluster", devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, "custom-cluster", devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, "custom-cluster", devUser)).isTrue();
+
+    // Verify topic check respects cluster-specific topic
+    assertThat(approvalService.isApprovalTopic("custom-cluster", "__cluster-approval-topic")).isTrue();
+  }
+
+  @Test
+  void createTopicIfNeededUsesClusterSpecificPartitionsAndConfigs() {
+    var clusterProps = new ClustersProperties.Cluster();
+    var clusterApproval = ApprovalProperties.builder()
+        .enabled(true)
+        .topic("__custom-approval-topic")
+        .partitions(3)
+        .topicProperties(Map.of("cleanup.policy", "compact", "min.insync.replicas", "2"))
+        .build();
+    clusterProps.setApproval(clusterApproval);
+
+    var customCluster = KafkaCluster.builder()
+        .name("custom-cluster")
+        .originalProperties(clusterProps)
+        .build();
+    when(clustersStorage.getClusterByName("custom-cluster")).thenReturn(java.util.Optional.of(customCluster));
+
+    ReactiveAdminClient ac = mock(ReactiveAdminClient.class);
+    when(ac.listTopics(true)).thenReturn(Mono.just(Set.of()));
+    when(ac.createTopic(eq("__custom-approval-topic"), eq(3), any(), any())).thenReturn(Mono.empty());
+
+    boolean created = approvalService.createTopicIfNeeded(customCluster, () -> ac, "__custom-approval-topic", clusterApproval);
+    assertThat(created).isTrue();
+    verify(ac).createTopic(
+        eq("__custom-approval-topic"),
+        eq(3),
+        any(),
+        eq(Map.of("cleanup.policy", "compact", "min.insync.replicas", "2"))
+    );
   }
 }

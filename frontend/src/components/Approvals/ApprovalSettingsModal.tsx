@@ -11,11 +11,12 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  clusterName?: string;
 }
 
-const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { data: settings, isLoading } = useApprovalSettings(isOpen);
-  const updateSettings = useUpdateApprovalSettings();
+const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose, clusterName }) => {
+  const { data: settings, isLoading } = useApprovalSettings(clusterName, isOpen);
+  const updateSettings = useUpdateApprovalSettings(clusterName);
 
   const [formState, setFormState] = useState<ApprovalProperties>({
     enabled: true,
@@ -68,7 +69,7 @@ const ApprovalSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Approval Workflow Settings"
+      title={clusterName ? `Approval Workflow Settings (${clusterName})` : 'Approval Workflow Settings'}
       footer={footer}
       maxWidth="550px"
     >

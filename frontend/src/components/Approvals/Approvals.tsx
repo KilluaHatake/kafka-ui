@@ -305,6 +305,7 @@ const Approvals: React.FC = () => {
         <ApprovalSettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          clusterName={clusterName}
         />
       )}
     </S.Wrapper>

@@ -96,6 +96,19 @@ public class ApprovalService implements Closeable {
     }
   }
 
+  public ApprovalProperties getApprovalProperties(@Nullable String clusterName) {
+    if (clusterName != null && clustersStorage != null) {
+      var clusterOpt = clustersStorage.getClusterByName(clusterName);
+      if (clusterOpt.isPresent()) {
+        var clusterApproval = clusterOpt.get().getOriginalProperties().getApproval();
+        if (clusterApproval != null) {
+          return clusterApproval;
+        }
+      }
+    }
+    return approvalProperties;
+  }
+
   public Set<String> getUserRolesForCluster(@Nullable String clusterName, AuthenticatedUser user) {
     if (user == null || user.groups() == null || user.groups().isEmpty()) {
       return Set.of();
@@ -117,7 +130,9 @@ public class ApprovalService implements Closeable {
 
   public boolean isDirectApply(@Nullable String clusterName, AuthenticatedUser user) {
     Set<String> roles = getUserRolesForCluster(clusterName, user);
-    return roles.stream().anyMatch(role -> approvalProperties.getDirectApplyRoles().contains(role));
+    var props = getApprovalProperties(clusterName);
+    return props != null && props.getDirectApplyRoles() != null
+        && roles.stream().anyMatch(role -> props.getDirectApplyRoles().contains(role));
   }
 
   public boolean isDirectApply(AuthenticatedUser user) {
@@ -126,7 +141,9 @@ public class ApprovalService implements Closeable {
 
   public boolean isApprover(@Nullable String clusterName, AuthenticatedUser user) {
     Set<String> roles = getUserRolesForCluster(clusterName, user);
-    return roles.stream().anyMatch(role -> approvalProperties.getApproverRoles().contains(role));
+    var props = getApprovalProperties(clusterName);
+    return props != null && props.getApproverRoles() != null
+        && roles.stream().anyMatch(role -> props.getApproverRoles().contains(role));
   }
 
   public boolean isApprover(AuthenticatedUser user) {
@@ -134,17 +151,18 @@ public class ApprovalService implements Closeable {
   }
 
   public boolean isApprovalRequired(ApprovalTargetType type, @Nullable String clusterName, AuthenticatedUser user) {
-    if (!approvalProperties.isEnabled()) {
+    var props = getApprovalProperties(clusterName);
+    if (props == null || !props.isEnabled()) {
       return false;
     }
 
     boolean gated = switch (type) {
-      case TOPIC_CREATE -> approvalProperties.isRequireTopicCreation();
-      case TOPIC_CONFIG_UPDATE -> approvalProperties.isRequireTopicConfigUpdates();
-      case CONNECTOR_CREATE, CONNECTOR_UPDATE, CONNECTOR_ACTION -> approvalProperties.isRequireConnectorDeployments();
-      case BROKER_CONFIG_UPDATE -> approvalProperties.isRequireBrokerConfigUpdates();
-      case CONSUMER_GROUP_DELETE -> approvalProperties.isRequireConsumerGroupDelete();
-      case CONNECTOR_RESET_OFFSETS -> approvalProperties.isRequireConnectorResetOffsets();
+      case TOPIC_CREATE -> props.isRequireTopicCreation();
+      case TOPIC_CONFIG_UPDATE -> props.isRequireTopicConfigUpdates();
+      case CONNECTOR_CREATE, CONNECTOR_UPDATE, CONNECTOR_ACTION -> props.isRequireConnectorDeployments();
+      case BROKER_CONFIG_UPDATE -> props.isRequireBrokerConfigUpdates();
+      case CONSUMER_GROUP_DELETE -> props.isRequireConsumerGroupDelete();
+      case CONNECTOR_RESET_OFFSETS -> props.isRequireConnectorResetOffsets();
     };
 
     if (!gated) {
@@ -158,11 +176,15 @@ public class ApprovalService implements Closeable {
     return isApprovalRequired(type, null, user);
   }
 
-  public boolean canManageWorkflowSettings(AuthenticatedUser user) {
+  public boolean canManageWorkflowSettings(@Nullable String clusterName, AuthenticatedUser user) {
     if (accessControlService != null && !accessControlService.isRbacEnabled()) {
       return true;
     }
-    return isApprover(user) || isDirectApply(user);
+    return isApprover(clusterName, user) || isDirectApply(clusterName, user);
+  }
+
+  public boolean canManageWorkflowSettings(AuthenticatedUser user) {
+    return canManageWorkflowSettings(null, user);
   }
 
   public boolean canAccessApprovals(String clusterName, AuthenticatedUser user) {
@@ -417,13 +439,23 @@ public class ApprovalService implements Closeable {
     });
   }
 
-  public boolean isApprovalTopic(String topicName) {
+  public boolean isApprovalTopic(@Nullable String clusterName, String topicName) {
     if (topicName == null) {
       return false;
     }
-    String configured = approvalProperties != null ? approvalProperties.getTopic() : null;
     String defaultTopic = ApprovalProperties.DEFAULT_APPROVAL_TOPIC;
-    return (configured != null && configured.equals(topicName)) || defaultTopic.equals(topicName);
+    if (defaultTopic.equals(topicName)) {
+      return true;
+    }
+    var props = getApprovalProperties(clusterName);
+    if (props != null && topicName.equals(props.getTopic())) {
+      return true;
+    }
+    return approvalProperties != null && topicName.equals(approvalProperties.getTopic());
+  }
+
+  public boolean isApprovalTopic(String topicName) {
+    return isApprovalTopic(null, topicName);
   }
 
   @SuppressWarnings("unchecked")
@@ -484,10 +516,11 @@ public class ApprovalService implements Closeable {
   }
 
   private void initTopicAndProducer(KafkaCluster cluster) {
-    if (!approvalProperties.isEnabled()) {
+    var props = getApprovalProperties(cluster.getName());
+    if (props == null || !props.isEnabled()) {
       return;
     }
-    String topicName = Optional.ofNullable(approvalProperties.getTopic())
+    String topicName = Optional.ofNullable(props.getTopic())
         .orElse(ApprovalProperties.DEFAULT_APPROVAL_TOPIC);
 
     Supplier<ReactiveAdminClient> adminClientSupplier = () -> adminClientService.get(cluster)
@@ -497,7 +530,7 @@ public class ApprovalService implements Closeable {
         )
         .block(BLOCK_TIMEOUT);
 
-    boolean topicReady = createTopicIfNeeded(cluster, adminClientSupplier, topicName);
+    boolean topicReady = createTopicIfNeeded(cluster, adminClientSupplier, topicName, props);
     if (topicReady) {
       try {
         var producer = MessagesService.createProducer(cluster, Map.of(
@@ -517,7 +550,8 @@ public class ApprovalService implements Closeable {
   @VisibleForTesting
   boolean createTopicIfNeeded(KafkaCluster cluster,
                               Supplier<ReactiveAdminClient> acSupplier,
-                              String approvalTopicName) {
+                              String approvalTopicName,
+                              ApprovalProperties props) {
     ReactiveAdminClient ac;
     try {
       ac = acSupplier.get();
@@ -544,11 +578,12 @@ public class ApprovalService implements Closeable {
     try {
       Map<String, String> topicConfig = new HashMap<>();
       topicConfig.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-      Optional.ofNullable(approvalProperties.getTopicProperties())
-          .ifPresent(topicConfig::putAll);
+      if (props != null && props.getTopicProperties() != null) {
+        topicConfig.putAll(props.getTopicProperties());
+      }
 
-      int topicPartitions = approvalProperties.getPartitions() > 0
-          ? approvalProperties.getPartitions()
+      int topicPartitions = (props != null && props.getPartitions() > 0)
+          ? props.getPartitions()
           : 1;
 
       log.info("Creating approval topic '{}' for cluster '{}'", approvalTopicName, cluster.getName());
@@ -561,8 +596,18 @@ public class ApprovalService implements Closeable {
     }
   }
 
+  @VisibleForTesting
+  boolean createTopicIfNeeded(KafkaCluster cluster,
+                              Supplier<ReactiveAdminClient> acSupplier,
+                              String approvalTopicName) {
+    return createTopicIfNeeded(cluster, acSupplier, approvalTopicName, getApprovalProperties(cluster.getName()));
+  }
+
   public void replayRequestsFromTopic(KafkaCluster cluster) {
-    String topicName = approvalProperties.getTopic();
+    var props = getApprovalProperties(cluster.getName());
+    String topicName = props != null && props.getTopic() != null
+        ? props.getTopic()
+        : ApprovalProperties.DEFAULT_APPROVAL_TOPIC;
     try (var consumer = createConsumer(cluster)) {
       var partitionInfos = consumer.partitionsFor(topicName, Duration.ofSeconds(5));
       if (partitionInfos == null || partitionInfos.isEmpty()) {
@@ -644,9 +689,13 @@ public class ApprovalService implements Closeable {
     );
     if (producer != null) {
       try {
+        var props = getApprovalProperties(clusterName);
+        String topicName = props != null && props.getTopic() != null
+            ? props.getTopic()
+            : ApprovalProperties.DEFAULT_APPROVAL_TOPIC;
         String json = request.toJson();
         producer.send(
-            new ProducerRecord<>(approvalProperties.getTopic(), request.getId().getBytes(UTF_8), json.getBytes(UTF_8)),
+            new ProducerRecord<>(topicName, request.getId().getBytes(UTF_8), json.getBytes(UTF_8)),
             (metadata, ex) -> {
               if (ex != null) {
                 log.warn("Error writing approval record to topic on cluster {}", clusterName, ex);
@@ -667,8 +716,12 @@ public class ApprovalService implements Closeable {
     );
     if (producer != null) {
       try {
+        var props = getApprovalProperties(clusterName);
+        String topicName = props != null && props.getTopic() != null
+            ? props.getTopic()
+            : ApprovalProperties.DEFAULT_APPROVAL_TOPIC;
         producer.send(
-            new ProducerRecord<>(approvalProperties.getTopic(), id.getBytes(UTF_8), null),
+            new ProducerRecord<>(topicName, id.getBytes(UTF_8), null),
             (metadata, ex) -> {
               if (ex != null) {
                 log.warn("Error writing approval tombstone to topic on cluster {}", clusterName, ex);
