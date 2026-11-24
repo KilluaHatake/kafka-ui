@@ -55,8 +55,8 @@ class CorsGlobalConfigurationTest {
 
     HttpHeaders headers = new HttpHeaders();
     CorsGlobalConfiguration.fillCorsHeader(headers, req);
-    assertThat(headers.containsKey("Access-Control-Allow-Origin")).isFalse();
-    assertThat(headers.containsKey("Access-Control-Allow-Credentials")).isFalse();
+    assertThat(headers.containsHeader("Access-Control-Allow-Origin")).isFalse();
+    assertThat(headers.containsHeader("Access-Control-Allow-Credentials")).isFalse();
   }
 
   @Test
