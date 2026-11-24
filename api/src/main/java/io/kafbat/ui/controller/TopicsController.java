@@ -49,7 +49,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.resource.PatternType;
@@ -79,7 +78,7 @@ public class TopicsController extends AbstractController implements TopicsApi, M
 
   @Override
   public Mono<ResponseEntity<TopicDTO>> createTopic(
-      String clusterName, @Valid Mono<TopicCreationDTO> topicCreationMono, ServerWebExchange exchange) {
+      String clusterName, Mono<TopicCreationDTO> topicCreationMono, ServerWebExchange exchange) {
     return topicCreationMono.flatMap(topicCreation -> {
       var context = AccessContext.builder()
           .cluster(clusterName)
@@ -237,12 +236,12 @@ public class TopicsController extends AbstractController implements TopicsApi, M
 
   @Override
   public Mono<ResponseEntity<TopicsResponseDTO>> getTopics(String clusterName,
-                                                           @Valid Integer page,
-                                                           @Valid Integer perPage,
-                                                           @Valid Boolean showInternal,
-                                                           @Valid String search,
-                                                           @Valid TopicColumnsToSortDTO orderBy,
-                                                           @Valid SortOrderDTO sortOrder,
+                                                           Integer page,
+                                                           Integer perPage,
+                                                           Boolean showInternal,
+                                                           String search,
+                                                           TopicColumnsToSortDTO orderBy,
+                                                           SortOrderDTO sortOrder,
                                                            Boolean fts,
                                                            ServerWebExchange exchange) {
 
@@ -308,7 +307,7 @@ public class TopicsController extends AbstractController implements TopicsApi, M
 
   @Override
   public Mono<ResponseEntity<TopicDTO>> updateTopic(
-      String clusterName, String topicName, @Valid Mono<TopicUpdateDTO> topicUpdate,
+      String clusterName, String topicName, Mono<TopicUpdateDTO> topicUpdate,
       ServerWebExchange exchange) {
 
     if (approvalService.isApprovalTopic(topicName)) {
