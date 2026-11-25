@@ -384,8 +384,10 @@ class ApprovalServiceTest {
     assertThat(approvalService.isApprover("custom-cluster", devUser)).isFalse();
     assertThat(approvalService.isDirectApply("custom-cluster", devUser)).isFalse();
     assertThat(approvalService.isApprovalRequired(ApprovalTargetType.TOPIC_CREATE, "custom-cluster", devUser)).isTrue();
-    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONSUMER_GROUP_DELETE, "custom-cluster", devUser)).isTrue();
-    assertThat(approvalService.isApprovalRequired(ApprovalTargetType.CONNECTOR_RESET_OFFSETS, "custom-cluster", devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(
+        ApprovalTargetType.CONSUMER_GROUP_DELETE, "custom-cluster", devUser)).isTrue();
+    assertThat(approvalService.isApprovalRequired(
+        ApprovalTargetType.CONNECTOR_RESET_OFFSETS, "custom-cluster", devUser)).isTrue();
 
     // Verify topic check respects cluster-specific topic
     assertThat(approvalService.isApprovalTopic("custom-cluster", "__cluster-approval-topic")).isTrue();
@@ -412,7 +414,8 @@ class ApprovalServiceTest {
     when(ac.listTopics(true)).thenReturn(Mono.just(Set.of()));
     when(ac.createTopic(eq("__custom-approval-topic"), eq(3), any(), any())).thenReturn(Mono.empty());
 
-    boolean created = approvalService.createTopicIfNeeded(customCluster, () -> ac, "__custom-approval-topic", clusterApproval);
+    boolean created = approvalService.createTopicIfNeeded(
+        customCluster, () -> ac, "__custom-approval-topic", clusterApproval);
     assertThat(created).isTrue();
     verify(ac).createTopic(
         eq("__custom-approval-topic"),
